@@ -3,9 +3,89 @@ import pandas as pd
 import numpy as np
 import yfinance as yf
 
-st.set_page_config(page_title="Aksjeanalyse V2", page_icon="📈", layout="wide")
+st.set_page_config(
+    page_title="Aksjeanalyse",
+    page_icon="📈",
+    layout="wide",
+    initial_sidebar_state="collapsed",
+)
 
-st.title("📈 Aksjeanalyse V2")
+# Mobile-friendly styling and reduced Streamlit chrome.
+st.markdown(
+    """
+    <style>
+    /* Hide Streamlit toolbar / development chrome */
+    [data-testid="stToolbar"] {display: none !important;}
+    [data-testid="stDecoration"] {display: none !important;}
+    #MainMenu {visibility: hidden !important;}
+    footer {visibility: hidden !important;}
+    header {visibility: hidden !important;}
+
+    /* Remove top whitespace left by hidden header */
+    .block-container {
+        padding-top: 0.8rem !important;
+        padding-bottom: 2rem !important;
+        max-width: 1100px;
+    }
+
+    /* Better tap targets on mobile */
+    .stButton > button {
+        min-height: 3rem;
+        border-radius: 0.8rem;
+        font-weight: 600;
+    }
+
+    .stTextInput input, .stTextArea textarea {
+        font-size: 16px !important;
+        border-radius: 0.75rem !important;
+    }
+
+    /* Compact title on phones */
+    h1 {
+        font-size: clamp(2rem, 8vw, 3rem) !important;
+        margin-bottom: 0.2rem !important;
+    }
+
+    /* Make metrics wrap more naturally */
+    [data-testid="stMetric"] {
+        padding: 0.35rem 0;
+    }
+
+    /* Mobile layout */
+    @media (max-width: 700px) {
+        .block-container {
+            padding-left: 0.8rem !important;
+            padding-right: 0.8rem !important;
+            padding-top: 0.35rem !important;
+        }
+
+        [data-testid="stHorizontalBlock"] {
+            gap: 0.5rem !important;
+        }
+
+        [data-testid="stMetricLabel"] {
+            font-size: 0.9rem !important;
+        }
+
+        [data-testid="stMetricValue"] {
+            font-size: 1.35rem !important;
+        }
+
+        .stTabs [data-baseweb="tab-list"] {
+            gap: 0.25rem;
+        }
+
+        .stTabs [data-baseweb="tab"] {
+            padding-left: 0.7rem;
+            padding-right: 0.7rem;
+        }
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+st.title("📈 Aksjeanalyse")
 st.caption("Analyser enkeltaksjer og ranger et utvalg Oslo Børs-aksjer. Ikke investeringsråd.")
 
 OSLO_DEFAULT = [
@@ -18,8 +98,7 @@ OSLO_DEFAULT = [
 @st.cache_data(ttl=900, show_spinner=False)
 def get_history(ticker: str, period: str = "1y"):
     try:
-        hist = yf.Ticker(ticker).history(period=period, auto_adjust=True)
-        return hist
+        return yf.Ticker(ticker).history(period=period, auto_adjust=True)
     except Exception:
         return pd.DataFrame()
 
@@ -44,11 +123,7 @@ def analyze_ticker(ticker: str, include_fundamentals: bool = True):
 
     current = float(close.iloc[-1])
     ret_1y = (current / float(close.iloc[0]) - 1) * 100
-
-    if len(close) >= 126:
-        ret_6m = (current / float(close.iloc[-126]) - 1) * 100
-    else:
-        ret_6m = np.nan
+    ret_6m = (current / float(close.iloc[-126]) - 1) * 100 if len(close) >= 126 else np.nan
 
     ma50 = close.rolling(50).mean().iloc[-1]
     ma200 = close.rolling(200).mean().iloc[-1] if len(close) >= 200 else np.nan
@@ -68,7 +143,6 @@ def analyze_ticker(ticker: str, include_fundamentals: bool = True):
     max_score = 100.0
     reasons = []
 
-    # Trend: 30 poeng
     if np.isfinite(ma200):
         if current > ma200:
             score += 18
@@ -81,7 +155,6 @@ def analyze_ticker(ticker: str, include_fundamentals: bool = True):
             score += 15
             reasons.append("Kurs over 50-dagers snitt")
 
-    # Momentum: 30 poeng
     if ret_1y > 25:
         score += 18
     elif ret_1y > 10:
@@ -97,7 +170,6 @@ def analyze_ticker(ticker: str, include_fundamentals: bool = True):
         elif ret_6m > 0:
             score += 5
 
-    # Risiko: 20 poeng
     if np.isfinite(vol):
         if vol < 20:
             score += 20
@@ -108,7 +180,6 @@ def analyze_ticker(ticker: str, include_fundamentals: bool = True):
         elif vol < 55:
             score += 4
 
-    # Verdsettelse: 20 poeng
     if pe is not None and pe > 0:
         if pe < 12:
             score += 20
@@ -119,7 +190,6 @@ def analyze_ticker(ticker: str, include_fundamentals: bool = True):
         elif pe < 35:
             score += 5
     else:
-        # Ikke straff aksjen fullt når P/E mangler
         max_score = 80.0
 
     normalized = round(score / max_score * 100, 1) if max_score else 0
@@ -150,17 +220,17 @@ def score_label(score):
         return "Nøytral"
     return "Svak"
 
-tab1, tab2 = st.tabs(["🔎 Enkeltanalyse", "🏆 Oslo Børs-rangering"])
+tab1, tab2 = st.tabs(["🔎 Enkeltanalyse", "🏆 Rangering"])
 
 with tab1:
     ticker = st.text_input(
         "Ticker",
         value="EQNR.OL",
-        help="Norske aksjer bruker vanligvis .OL, f.eks. EQNR.OL eller DNB.OL.",
+        help="Norske aksjer bruker vanligvis .OL.",
         key="single_ticker",
     ).strip().upper()
 
-    if st.button("Analyser aksje", type="primary", key="single_btn"):
+    if st.button("Analyser aksje", type="primary", key="single_btn", use_container_width=True):
         with st.spinner(f"Analyserer {ticker}..."):
             r = analyze_ticker(ticker, include_fundamentals=True)
 
@@ -169,11 +239,13 @@ with tab1:
         else:
             st.subheader(f"{r['Selskap']} ({r['Ticker']})")
 
-            c1, c2, c3, c4 = st.columns(4)
+            c1, c2 = st.columns(2)
             c1.metric("Kurs", f"{r['Kurs']:.2f} {r['Valuta']}")
-            c2.metric("1 år", f"{r['1 år %']:.1f}%")
-            c3.metric("P/E", f"{r['P/E']:.1f}" if r["P/E"] is not None else "N/A")
-            c4.metric("Score", f"{r['Score']:.0f}/100")
+            c2.metric("Score", f"{r['Score']:.0f}/100")
+
+            c3, c4 = st.columns(2)
+            c3.metric("1 år", f"{r['1 år %']:.1f}%")
+            c4.metric("P/E", f"{r['P/E']:.1f}" if r["P/E"] is not None else "N/A")
 
             st.progress(min(max(r["Score"] / 100, 0), 1))
 
@@ -181,50 +253,44 @@ with tab1:
             chart["MA50"] = chart["Close"].rolling(50).mean()
             if len(chart) >= 200:
                 chart["MA200"] = chart["Close"].rolling(200).mean()
-            st.line_chart(chart)
+            st.line_chart(chart, use_container_width=True)
 
-            left, right = st.columns(2)
-            with left:
-                st.markdown("### Nøkkeltall")
-                data = [
-                    ["6 mnd. avkastning", f"{r['6 mnd %']:.1f}%" if np.isfinite(r["6 mnd %"]) else "N/A"],
-                    ["Årlig volatilitet", f"{r['Volatilitet %']:.1f}%"],
-                    ["Fra 52-ukers topp", f"{r['Fra 52u topp %']:.1f}%"],
-                    ["MA50", f"{r['MA50']:.2f}" if np.isfinite(r["MA50"]) else "N/A"],
-                    ["MA200", f"{r['MA200']:.2f}" if np.isfinite(r["MA200"]) else "N/A"],
-                ]
-                st.dataframe(pd.DataFrame(data, columns=["Måltall", "Verdi"]), hide_index=True, use_container_width=True)
+            st.markdown("### Nøkkeltall")
+            data = [
+                ["6 mnd. avkastning", f"{r['6 mnd %']:.1f}%" if np.isfinite(r["6 mnd %"]) else "N/A"],
+                ["Årlig volatilitet", f"{r['Volatilitet %']:.1f}%"],
+                ["Fra 52-ukers topp", f"{r['Fra 52u topp %']:.1f}%"],
+                ["MA50", f"{r['MA50']:.2f}" if np.isfinite(r["MA50"]) else "N/A"],
+                ["MA200", f"{r['MA200']:.2f}" if np.isfinite(r["MA200"]) else "N/A"],
+            ]
+            st.dataframe(
+                pd.DataFrame(data, columns=["Måltall", "Verdi"]),
+                hide_index=True,
+                use_container_width=True,
+            )
 
-            with right:
-                st.markdown("### Vurdering")
-                st.write(f"**Kategori:** {score_label(r['Score'])}")
-                if r["_reasons"]:
-                    for x in r["_reasons"]:
-                        st.write(f"✅ {x}")
-                st.caption("Scoren kombinerer trend, momentum, volatilitet og P/E når P/E er tilgjengelig.")
+            st.markdown("### Vurdering")
+            st.write(f"**Kategori:** {score_label(r['Score'])}")
+            for x in r["_reasons"]:
+                st.write(f"✅ {x}")
 
 with tab2:
     st.markdown("### Ranger aksjer")
-    st.write("Appen analyserer et forhåndsvalgt utvalg Oslo Børs-aksjer og sorterer dem etter score.")
-
     tickers_text = st.text_area(
         "Tickere",
         value=", ".join(OSLO_DEFAULT),
-        height=120,
-        help="Du kan legge til eller fjerne tickere. Skill dem med komma.",
+        height=135,
+        help="Skill tickerne med komma.",
     )
 
-    col_a, col_b = st.columns([1, 2])
-    with col_a:
-        max_stocks = st.slider("Maks antall aksjer", 5, 30, 20)
-    with col_b:
-        include_fundamentals = st.checkbox(
-            "Ta med P/E i rangeringen",
-            value=True,
-            help="Kan gjøre analysen tregere fordi selskapsdata må hentes for hver aksje.",
-        )
+    max_stocks = st.slider("Maks antall aksjer", 5, 30, 20)
+    include_fundamentals = st.checkbox(
+        "Ta med P/E i rangeringen",
+        value=True,
+        help="Kan gjøre analysen tregere.",
+    )
 
-    if st.button("Kjør Oslo Børs-rangering", type="primary"):
+    if st.button("Kjør rangering", type="primary", use_container_width=True):
         tickers = [x.strip().upper() for x in tickers_text.replace("\n", ",").split(",") if x.strip()]
         tickers = list(dict.fromkeys(tickers))[:max_stocks]
 
@@ -261,25 +327,16 @@ with tab2:
             st.success(f"Analyserte {len(df)} aksjer.")
             st.dataframe(display, use_container_width=True)
 
-            st.markdown("### Topp 5 akkurat nå")
-            top = df.head(5)
-            for rank, (_, row) in enumerate(top.iterrows(), start=1):
+            st.markdown("### Topp 5")
+            for rank, (_, row) in enumerate(df.head(5).iterrows(), start=1):
                 pe_text = f"P/E {row['P/E']:.1f}" if pd.notna(row["P/E"]) else "P/E N/A"
                 st.write(
                     f"**{rank}. {row['Ticker']} — {row['Score']:.0f}/100**  "
                     f"| 1 år {row['1 år %']:.1f}% | Vol. {row['Volatilitet %']:.1f}% | {pe_text}"
                 )
 
-            csv = display.to_csv(index=True).encode("utf-8")
-            st.download_button(
-                "Last ned rangering som CSV",
-                data=csv,
-                file_name="oslo_bors_rangering.csv",
-                mime="text/csv",
-            )
-
 st.markdown("---")
 st.caption(
-    "Viktig: Historisk kursutvikling og en mekanisk score kan ikke forutsi fremtidig avkastning. "
-    "Bruk dette som et analyseverktøy, ikke som automatisk kjøps- eller salgsråd."
+    "Historiske data og en mekanisk score kan ikke forutsi fremtidig avkastning. "
+    "Bruk dette som analyseverktøy, ikke som automatisk kjøps- eller salgsråd."
 )
