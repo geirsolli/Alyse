@@ -342,6 +342,10 @@ def analyze_ticker(ticker, full=True):
 # Persist selected ticker across tabs.
 if "selected_ticker" not in st.session_state:
     st.session_state.selected_ticker = "EQNR.OL"
+if "top50_results" not in st.session_state:
+    st.session_state.top50_results = None
+if "top50_mode" not in st.session_state:
+    st.session_state.top50_mode = None
 
 tab1, tab2, tab3 = st.tabs(["🔬 Enkeltanalyse", "🏆 Top 50", "📋 Tickerliste"])
 
@@ -472,7 +476,14 @@ with tab2:
             progress.progress((i + 1) / 50)
 
         status.empty()
+        st.session_state.top50_results = results
+        st.session_state.top50_mode = mode
 
+    # Behold resultatene i session_state slik at valg av selskap,
+    # lenker og andre widgets ikke nullstiller analysen ved Streamlit-rerun.
+    results = st.session_state.top50_results
+
+    if results is not None:
         if not results:
             st.error("Ingen aksjer kunne analyseres.")
         else:
@@ -495,10 +506,12 @@ with tab2:
                 "Volatilitet %", "Direkteavkastning %", "P/E", "ROE %"
             ]
             display = df[show_cols].copy()
-            for col in ["Score", "Teknisk", "Fundamental", "Kvalitet", "Risiko", "Utbytte-score", "1 år %", "Volatilitet %", "Direkteavkastning %", "P/E", "ROE %"]:
+            for col in ["Score", "Teknisk", "Fundamental", "Kvalitet", "Risiko", "Utbytte-score",
+                        "1 år %", "Volatilitet %", "Direkteavkastning %", "P/E", "ROE %"]:
                 display[col] = pd.to_numeric(display[col], errors="coerce").round(1)
 
-            st.success(f"Analyserte {len(results)} av 50 aksjer.")
+            mode_txt = st.session_state.top50_mode or mode
+            st.success(f"Analyserte {len(results)} av 50 aksjer · {mode_txt}.")
             st.dataframe(display, use_container_width=True)
 
             st.markdown("### Topp 10")
@@ -514,12 +527,22 @@ with tab2:
                     format_func=lambda x: f"{x} — {df.loc[df['Ticker'] == x, 'Selskap'].iloc[0]}",
                     key="result_pick",
                 )
+
                 picked_row = df.loc[df["Ticker"] == pick].iloc[0]
                 st.caption(f"Siste tilgjengelige kursdato: {picked_row['Siste kursdato']}")
+
                 link_cols2 = st.columns(2)
                 if pd.notna(picked_row.get("Nettside")) and picked_row.get("Nettside"):
-                    link_cols2[0].link_button("🌐 Selskapets nettside", picked_row["Nettside"], use_container_width=True)
-                link_cols2[1].link_button("📈 Yahoo Finance", picked_row["Yahoo URL"], use_container_width=True)
+                    link_cols2[0].link_button(
+                        "🌐 Selskapets nettside",
+                        picked_row["Nettside"],
+                        use_container_width=True
+                    )
+                link_cols2[1].link_button(
+                    "📈 Yahoo Finance",
+                    picked_row["Yahoo URL"],
+                    use_container_width=True
+                )
 
                 if st.button("Bruk denne i enkeltanalyse", use_container_width=True):
                     st.session_state.selected_ticker = pick
@@ -533,6 +556,11 @@ with tab2:
                 mime="text/csv",
                 use_container_width=True,
             )
+
+            if st.button("🗑️ Nullstill Top 50-analyse", use_container_width=True):
+                st.session_state.top50_results = None
+                st.session_state.top50_mode = None
+                st.rerun()
 
 with tab3:
     st.markdown("### Top 50 tickerliste")
