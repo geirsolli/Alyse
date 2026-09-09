@@ -540,7 +540,7 @@ with tab2:
 
             show_cols = [
                 "Markedsverdi-rang", "Ticker", "Selskap", "Kurs", "Siste kursdato",
-                "30 dager %", "Trend 30d", "90 dager %", "Trend 90d", "1 år %", "Trend 1 år",
+                "30 dager %", "90 dager %", "1 år %",
                 "Score", "Vurdering", "Teknisk", "Fundamental", "Kvalitet", "Risiko", "Utbytte-score",
                 "Volatilitet %", "Direkteavkastning %", "P/E", "ROE %"
             ]
