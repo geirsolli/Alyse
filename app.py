@@ -33,7 +33,7 @@ st.markdown(
 )
 
 st.title("📊 Aksjeanalyse Pro")
-st.caption("Detaljanalyse og screening av 50 store Oslo Børs-aksjer. Ikke investeringsråd.")
+st.caption("Detaljanalyse og screening av 50 store Oslo Børs-aksjer. Total score inkluderer nå utbytte. Ikke investeringsråd.")
 
 # Kuratert Top 50-liste. Kan redigeres i appen dersom ønskelig.
 TOP50 = [
@@ -168,6 +168,11 @@ def analyze_ticker(ticker, full=True):
         return None
 
     current = float(close.iloc[-1])
+    try:
+        last_price_date = pd.Timestamp(close.index[-1]).strftime("%d.%m.%Y")
+    except Exception:
+        last_price_date = str(close.index[-1])
+
     ret_1y = (current / float(close.iloc[-252]) - 1) * 100 if len(close) >= 252 else np.nan
     ret_6m = (current / float(close.iloc[-126]) - 1) * 100
     ret_3m = (current / float(close.iloc[-63]) - 1) * 100
@@ -187,6 +192,11 @@ def analyze_ticker(ticker, full=True):
     info = get_info(ticker) if full else {}
     name = info.get("shortName") or info.get("longName") or dict(TOP50).get(ticker, ticker)
     currency = info.get("currency") or "NOK"
+    website = info.get("website")
+    sector = info.get("sector")
+    industry = info.get("industry")
+    business_summary = info.get("longBusinessSummary")
+    yahoo_url = f"https://finance.yahoo.com/quote/{ticker}"
 
     pe = safe_num(info.get("trailingPE"))
     fwd_pe = safe_num(info.get("forwardPE"))
@@ -236,23 +246,20 @@ def analyze_ticker(ticker, full=True):
         tech += 10
     tech = min(100, round(tech, 1))
 
+    # Fundamental score = hovedsakelig verdsettelse.
+    # Vi unngår å telle ROE/marginer to ganger ved å flytte dem til kvalitet.
     fund_parts = []
     if pe is not None and pe > 0:
         fund_parts.append(95 if pe < 12 else 80 if pe < 18 else 65 if pe < 25 else 45 if pe < 35 else 25)
+    if fwd_pe is not None and fwd_pe > 0:
+        fund_parts.append(95 if fwd_pe < 12 else 80 if fwd_pe < 18 else 65 if fwd_pe < 25 else 45 if fwd_pe < 35 else 25)
     if pb is not None and pb > 0:
         fund_parts.append(90 if pb < 1.5 else 70 if pb < 3 else 50 if pb < 5 else 30)
     if ev_ebitda is not None and ev_ebitda > 0:
         fund_parts.append(90 if ev_ebitda < 8 else 70 if ev_ebitda < 12 else 50 if ev_ebitda < 18 else 30)
-    if roe is not None:
-        fund_parts.append(95 if roe > 20 else 75 if roe > 12 else 55 if roe > 5 else 30)
-    if profit_margin is not None:
-        fund_parts.append(90 if profit_margin > 20 else 70 if profit_margin > 10 else 55 if profit_margin > 5 else 35)
-    if revenue_growth is not None:
-        fund_parts.append(90 if revenue_growth > 15 else 70 if revenue_growth > 5 else 55 if revenue_growth > 0 else 30)
-    if earnings_growth is not None:
-        fund_parts.append(90 if earnings_growth > 15 else 70 if earnings_growth > 5 else 55 if earnings_growth > 0 else 30)
     fundamental = avg_or_nan(fund_parts)
 
+    # Risiko: høy score betyr lavere/mer håndterbar risiko.
     risk_parts = [
         90 if vol < 20 else 75 if vol < 30 else 55 if vol < 40 else 30,
         90 if mdd > -20 else 70 if mdd > -35 else 50 if mdd > -50 else 25,
@@ -263,28 +270,62 @@ def analyze_ticker(ticker, full=True):
         risk_parts.append(90 if debt_to_equity < 50 else 70 if debt_to_equity < 100 else 50 if debt_to_equity < 200 else 30)
     risk = avg_or_nan(risk_parts)
 
+    # Kvalitet og vekst.
     quality_parts = []
     if roe is not None:
         quality_parts.append(95 if roe > 20 else 75 if roe > 12 else 55 if roe > 5 else 30)
     if op_margin is not None:
         quality_parts.append(90 if op_margin > 20 else 70 if op_margin > 10 else 55 if op_margin > 5 else 35)
+    if revenue_growth is not None:
+        quality_parts.append(90 if revenue_growth > 15 else 75 if revenue_growth > 5 else 55 if revenue_growth > 0 else 30)
+    if earnings_growth is not None:
+        quality_parts.append(90 if earnings_growth > 15 else 75 if earnings_growth > 5 else 55 if earnings_growth > 0 else 30)
     if current_ratio is not None:
         quality_parts.append(85 if current_ratio > 1.5 else 65 if current_ratio > 1.0 else 40)
     quality = avg_or_nan(quality_parts)
 
-    parts, weights = [tech], [0.35]
+    # Utbytte-score.
+    # Høyt utbytte belønnes, men ekstremt høy direkteavkastning får lavere score
+    # fordi det ofte kan være et faresignal eller skyldes et ekstraordinært utbytte.
+    dividend_score = np.nan
+    if dividend_yield is not None and np.isfinite(dividend_yield):
+        if dividend_yield <= 0:
+            dividend_score = 20
+        elif dividend_yield < 2:
+            dividend_score = 35
+        elif dividend_yield < 4:
+            dividend_score = 55
+        elif dividend_yield < 6:
+            dividend_score = 75
+        elif dividend_yield < 9:
+            dividend_score = 90
+        elif dividend_yield < 12:
+            dividend_score = 95
+        elif dividend_yield < 15:
+            dividend_score = 75
+        else:
+            dividend_score = 45
+
+    # Ny totalvekt:
+    # Teknisk 30 %, Fundamental 25 %, Kvalitet 20 %, Risiko 15 %, Utbytte 10 %.
+    # Manglende kategorier utelates og de resterende vektene normaliseres.
+    parts, weights = [tech], [0.30]
     if np.isfinite(fundamental):
-        parts.append(fundamental); weights.append(0.30)
-    if np.isfinite(risk):
-        parts.append(risk); weights.append(0.20)
+        parts.append(fundamental); weights.append(0.25)
     if np.isfinite(quality):
-        parts.append(quality); weights.append(0.15)
+        parts.append(quality); weights.append(0.20)
+    if np.isfinite(risk):
+        parts.append(risk); weights.append(0.15)
+    if np.isfinite(dividend_score):
+        parts.append(dividend_score); weights.append(0.10)
     total = round(float(np.average(parts, weights=weights)), 1)
 
     fair_value = current * 18 / pe if pe is not None and pe > 0 else None
 
     return {
         "Markedsverdi-rang": MARKET_CAP_RANK.get(ticker), "Ticker": ticker, "Selskap": name, "Valuta": currency, "Kurs": current,
+        "Siste kursdato": last_price_date, "Nettside": website, "Yahoo URL": yahoo_url,
+        "Sektor": sector, "Bransje": industry, "Beskrivelse": business_summary,
         "Score": total, "Teknisk": tech, "Fundamental": fundamental, "Risiko": risk, "Kvalitet": quality,
         "1 år %": ret_1y, "6 mnd %": ret_6m, "3 mnd %": ret_3m,
         "Volatilitet %": vol, "Sharpe": sharpe, "Maks drawdown %": mdd,
@@ -294,7 +335,7 @@ def analyze_ticker(ticker, full=True):
         "ROE %": roe, "ROA %": roa, "Profit margin %": profit_margin,
         "Operating margin %": op_margin, "Revenue growth %": revenue_growth,
         "Earnings growth %": earnings_growth, "Debt/Equity": debt_to_equity,
-        "Current ratio": current_ratio, "Beta": beta, "Dividend yield %": dividend_yield,
+        "Current ratio": current_ratio, "Beta": beta, "Dividend yield %": dividend_yield, "Utbytte-score": dividend_score,
         "Fair value proxy": fair_value, "_history": hist, "_reasons": reasons,
     }
 
@@ -334,6 +375,7 @@ with tab1:
             a, b = st.columns(2)
             a.metric("Kurs", f"{r['Kurs']:.2f} {r['Valuta']}")
             b.metric("Total score", f"{r['Score']:.0f}/100")
+            st.caption(f"Siste tilgjengelige kursdato: **{r['Siste kursdato']}**")
             c, d = st.columns(2)
             c.metric("1 år", fmt(r["1 år %"], "%"))
             d.metric("RSI", fmt(r["RSI14"]))
@@ -341,14 +383,36 @@ with tab1:
 
             st.markdown("### Delscorer")
             st.dataframe(pd.DataFrame({
-                "Område": ["Teknisk", "Fundamental", "Risiko", "Kvalitet"],
-                "Score": [r["Teknisk"], r["Fundamental"], r["Risiko"], r["Kvalitet"]],
+                "Område": ["Teknisk", "Fundamental", "Kvalitet", "Risiko", "Utbytte"],
+                "Score": [r["Teknisk"], r["Fundamental"], r["Kvalitet"], r["Risiko"], r["Utbytte-score"]],
             }), hide_index=True, use_container_width=True)
 
             chart = r["_history"][["Close"]].copy()
             chart["MA50"] = chart["Close"].rolling(50).mean()
             chart["MA200"] = chart["Close"].rolling(200).mean()
             st.line_chart(chart, use_container_width=True)
+
+            st.markdown("### Om selskapet")
+            info_rows = []
+            if r.get("Sektor"):
+                info_rows.append(["Sektor", r["Sektor"]])
+            if r.get("Bransje"):
+                info_rows.append(["Bransje", r["Bransje"]])
+            if info_rows:
+                st.dataframe(
+                    pd.DataFrame(info_rows, columns=["Felt", "Info"]),
+                    hide_index=True,
+                    use_container_width=True
+                )
+
+            link_cols = st.columns(2)
+            if r.get("Nettside"):
+                link_cols[0].link_button("🌐 Selskapets nettside", r["Nettside"], use_container_width=True)
+            link_cols[1].link_button("📈 Yahoo Finance", r["Yahoo URL"], use_container_width=True)
+
+            if r.get("Beskrivelse"):
+                with st.expander("Les mer om selskapet"):
+                    st.write(r["Beskrivelse"])
 
             st.markdown("### Teknisk")
             st.dataframe(pd.DataFrame([
@@ -392,7 +456,7 @@ with tab2:
         help="Full analyse henter flere fundamentale nøkkeltall. Hurtigmodus er raskere og fokuserer mest på kurs/teknisk data.",
     )
     min_score = st.slider("Vis bare score over", 0, 90, 0, step=5)
-    sort_by = st.selectbox("Sorter etter", ["Score", "Direkteavkastning %", "Teknisk", "Fundamental", "Risiko", "Kvalitet", "1 år %"])
+    sort_by = st.selectbox("Sorter etter", ["Score", "Direkteavkastning %", "Utbytte-score", "Teknisk", "Fundamental", "Kvalitet", "Risiko", "1 år %"])
 
     if st.button("Analyser Oslo Børs Top 50", type="primary", use_container_width=True):
         results = []
@@ -426,12 +490,12 @@ with tab2:
             df.index = df.index + 1
 
             show_cols = [
-                "Markedsverdi-rang", "Ticker", "Selskap", "Score", "Vurdering", "Teknisk",
-                "Fundamental", "Risiko", "Kvalitet", "1 år %",
+                "Markedsverdi-rang", "Ticker", "Selskap", "Siste kursdato", "Score", "Vurdering", "Teknisk",
+                "Fundamental", "Kvalitet", "Risiko", "Utbytte-score", "1 år %",
                 "Volatilitet %", "Direkteavkastning %", "P/E", "ROE %"
             ]
             display = df[show_cols].copy()
-            for col in ["Score", "Teknisk", "Fundamental", "Risiko", "Kvalitet", "1 år %", "Volatilitet %", "Direkteavkastning %", "P/E", "ROE %"]:
+            for col in ["Score", "Teknisk", "Fundamental", "Kvalitet", "Risiko", "Utbytte-score", "1 år %", "Volatilitet %", "Direkteavkastning %", "P/E", "ROE %"]:
                 display[col] = pd.to_numeric(display[col], errors="coerce").round(1)
 
             st.success(f"Analyserte {len(results)} av 50 aksjer.")
@@ -450,6 +514,13 @@ with tab2:
                     format_func=lambda x: f"{x} — {df.loc[df['Ticker'] == x, 'Selskap'].iloc[0]}",
                     key="result_pick",
                 )
+                picked_row = df.loc[df["Ticker"] == pick].iloc[0]
+                st.caption(f"Siste tilgjengelige kursdato: {picked_row['Siste kursdato']}")
+                link_cols2 = st.columns(2)
+                if pd.notna(picked_row.get("Nettside")) and picked_row.get("Nettside"):
+                    link_cols2[0].link_button("🌐 Selskapets nettside", picked_row["Nettside"], use_container_width=True)
+                link_cols2[1].link_button("📈 Yahoo Finance", picked_row["Yahoo URL"], use_container_width=True)
+
                 if st.button("Bruk denne i enkeltanalyse", use_container_width=True):
                     st.session_state.selected_ticker = pick
                     st.success(f"{pick} er valgt. Åpne fanen Enkeltanalyse.")
