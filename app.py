@@ -4,7 +4,7 @@ import numpy as np
 import yfinance as yf
 
 st.set_page_config(
-    page_title="Aksjeanalyse Pro V4.1",
+    page_title="Aksjeanalyse Pro V4.3.3",
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -190,7 +190,18 @@ def analyze_ticker(ticker, full=True):
     debt_to_equity = safe_num(info.get("debtToEquity"))
     current_ratio = safe_num(info.get("currentRatio"))
     beta = safe_num(info.get("beta"))
-    dividend_yield = pct(info.get("dividendYield"))
+    # Utbytte: beregn helst fra årlig utbytte per aksje / kurs.
+    # Dette unngår at Yahoo/yfinance sine prosentformater tolkes 100x feil.
+    dividend_rate = safe_num(info.get("dividendRate"))
+    current_price_info = safe_num(info.get("currentPrice")) or current
+    if dividend_rate is not None and current_price_info and current_price_info > 0:
+        dividend_yield = (dividend_rate / current_price_info) * 100
+    else:
+        # Fallback: nyere yfinance gir normalt dividendYield direkte i prosent,
+        # f.eks. 5.61 for 5.61 %, ikke 0.0561.
+        dividend_yield = safe_num(info.get("dividendYield"))
+        if dividend_yield is not None and dividend_yield > 100:
+            dividend_yield = None
 
     tech = 0
     reasons = []
