@@ -4,7 +4,7 @@ import numpy as np
 import yfinance as yf
 
 st.set_page_config(
-    page_title="Aksjeanalyse Pro V4",
+    page_title="Aksjeanalyse Pro V4.1",
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -370,7 +370,7 @@ with tab2:
         help="Full analyse henter flere fundamentale nøkkeltall. Hurtigmodus er raskere og fokuserer mest på kurs/teknisk data.",
     )
     min_score = st.slider("Vis bare score over", 0, 90, 0, step=5)
-    sort_by = st.selectbox("Sorter etter", ["Score", "Teknisk", "Fundamental", "Risiko", "Kvalitet", "1 år %"])
+    sort_by = st.selectbox("Sorter etter", ["Score", "Direkteavkastning %", "Teknisk", "Fundamental", "Risiko", "Kvalitet", "1 år %"])
 
     if st.button("Analyser Oslo Børs Top 40", type="primary", use_container_width=True):
         results = []
@@ -392,6 +392,7 @@ with tab2:
         else:
             df = pd.DataFrame(results)
             df["Vurdering"] = df["Score"].apply(score_label)
+            df["Direkteavkastning %"] = pd.to_numeric(df["Dividend yield %"], errors="coerce")
 
             if min_score > 0:
                 df = df[df["Score"] >= min_score]
@@ -405,10 +406,10 @@ with tab2:
             show_cols = [
                 "Ticker", "Selskap", "Score", "Vurdering", "Teknisk",
                 "Fundamental", "Risiko", "Kvalitet", "1 år %",
-                "Volatilitet %", "P/E", "ROE %"
+                "Volatilitet %", "Direkteavkastning %", "P/E", "ROE %"
             ]
             display = df[show_cols].copy()
-            for col in ["Score", "Teknisk", "Fundamental", "Risiko", "Kvalitet", "1 år %", "Volatilitet %", "P/E", "ROE %"]:
+            for col in ["Score", "Teknisk", "Fundamental", "Risiko", "Kvalitet", "1 år %", "Volatilitet %", "Direkteavkastning %", "P/E", "ROE %"]:
                 display[col] = pd.to_numeric(display[col], errors="coerce").round(1)
 
             st.success(f"Analyserte {len(results)} av 40 aksjer.")
@@ -416,7 +417,8 @@ with tab2:
 
             st.markdown("### Topp 10")
             for rank, (_, row) in enumerate(df.head(10).iterrows(), start=1):
-                st.write(f"**{rank}. {row['Ticker']} — {row['Score']:.0f}/100** · {row['Selskap']}")
+                div_txt = fmt(row["Direkteavkastning %"], "%")
+                st.write(f"**{rank}. {row['Ticker']} — {row['Score']:.0f}/100** · {row['Selskap']} · Utbytte {div_txt}")
 
             st.markdown("### Send ticker til enkeltanalyse")
             if len(df):
