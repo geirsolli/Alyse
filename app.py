@@ -547,7 +547,27 @@ with tab2:
 
             mode_txt = st.session_state.top50_mode or mode
             st.success(f"Analyserte {len(results)} av 50 aksjer · {mode_txt}.")
-            st.dataframe(display, use_container_width=True)
+
+            st.markdown("### Resultater")
+            st.caption("Mobilvisning – de viktigste tallene vises uten sideveis scrolling.")
+            for pos, (_, row) in enumerate(df.iterrows(), start=1):
+                with st.container(border=True):
+                    st.markdown(f"**{pos}. {row['Ticker']} · {row['Selskap']}**")
+                    c1, c2, c3 = st.columns(3)
+                    c1.metric("Score", f"{row['Score']:.0f}")
+                    c2.metric("Kurs", fmt(row["Kurs"], decimals=2))
+                    c3.metric("Utbytte", fmt(row["Direkteavkastning %"], "%"))
+                    c4, c5, c6 = st.columns(3)
+                    c4.metric("30d", fmt(row["30 dager %"], "%"))
+                    c5.metric("90d", fmt(row["90 dager %"], "%"))
+                    c6.metric("1 år", fmt(row["1 år %"], "%"))
+                    st.caption(
+                        f"30d {row['Trend 30d']} · 90d {row['Trend 90d']} · "
+                        f"1 år {row['Trend 1 år']} · Kursdato {row['Siste kursdato']}"
+                    )
+
+            with st.expander("📊 Vis full tabell med alle kolonner"):
+                st.dataframe(display, use_container_width=True)
 
             st.markdown("### Topp 10")
             for rank, (_, row) in enumerate(df.head(10).iterrows(), start=1):
