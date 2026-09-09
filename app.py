@@ -173,7 +173,22 @@ def analyze_ticker(ticker, full=True):
     except Exception:
         last_price_date = str(close.index[-1])
 
-    ret_1y = (current / float(close.iloc[-252]) - 1) * 100 if len(close) >= 252 else np.nan
+    def calendar_return(days):
+        try:
+            idx = pd.DatetimeIndex(close.index)
+            last_dt = pd.Timestamp(idx[-1])
+            target = last_dt - pd.Timedelta(days=days)
+            pos = idx.searchsorted(target, side="right") - 1
+            if pos < 0:
+                return np.nan
+            old_price = float(close.iloc[pos])
+            return (current / old_price - 1) * 100 if old_price > 0 else np.nan
+        except Exception:
+            return np.nan
+
+    ret_30d = calendar_return(30)
+    ret_90d = calendar_return(90)
+    ret_1y = calendar_return(365)
     ret_6m = (current / float(close.iloc[-126]) - 1) * 100
     ret_3m = (current / float(close.iloc[-63]) - 1) * 100
     ma50 = float(close.rolling(50).mean().iloc[-1])
@@ -322,12 +337,23 @@ def analyze_ticker(ticker, full=True):
 
     fair_value = current * 18 / pe if pe is not None and pe > 0 else None
 
+    def trend_label(v):
+        if v is None or not np.isfinite(v):
+            return "N/A"
+        if v > 2:
+            return "↗ Opp"
+        if v < -2:
+            return "↘ Ned"
+        return "→ Sideveis"
+
     return {
         "Markedsverdi-rang": MARKET_CAP_RANK.get(ticker), "Ticker": ticker, "Selskap": name, "Valuta": currency, "Kurs": current,
         "Siste kursdato": last_price_date, "Nettside": website, "Yahoo URL": yahoo_url,
         "Sektor": sector, "Bransje": industry, "Beskrivelse": business_summary,
         "Score": total, "Teknisk": tech, "Fundamental": fundamental, "Risiko": risk, "Kvalitet": quality,
-        "1 år %": ret_1y, "6 mnd %": ret_6m, "3 mnd %": ret_3m,
+        "30 dager %": ret_30d, "90 dager %": ret_90d, "1 år %": ret_1y,
+        "Trend 30d": trend_label(ret_30d), "Trend 90d": trend_label(ret_90d), "Trend 1 år": trend_label(ret_1y),
+        "6 mnd %": ret_6m, "3 mnd %": ret_3m,
         "Volatilitet %": vol, "Sharpe": sharpe, "Maks drawdown %": mdd,
         "RSI14": rsi14, "MACD": macd_line, "MACD signal": macd_signal, "MACD hist": macd_hist,
         "Fra 52u topp %": from_high, "MA50": ma50, "MA200": ma200,
@@ -381,8 +407,14 @@ with tab1:
             b.metric("Total score", f"{r['Score']:.0f}/100")
             st.caption(f"Siste tilgjengelige kursdato: **{r['Siste kursdato']}**")
             c, d = st.columns(2)
-            c.metric("1 år", fmt(r["1 år %"], "%"))
-            d.metric("RSI", fmt(r["RSI14"]))
+            c.metric("30 dager", fmt(r["30 dager %"], "%"))
+            d.metric("90 dager", fmt(r["90 dager %"], "%"))
+            e, f = st.columns(2)
+            e.metric("1 år", fmt(r["1 år %"], "%"))
+            f.metric("RSI", fmt(r["RSI14"]))
+            st.caption(
+                f"Trend: 30d **{r['Trend 30d']}** · 90d **{r['Trend 90d']}** · 1 år **{r['Trend 1 år']}**"
+            )
             st.progress(min(max(r["Score"] / 100, 0), 1))
 
             st.markdown("### Delscorer")
@@ -420,9 +452,11 @@ with tab1:
 
             st.markdown("### Teknisk")
             st.dataframe(pd.DataFrame([
-                ["3 mnd", fmt(r["3 mnd %"], "%")],
-                ["6 mnd", fmt(r["6 mnd %"], "%")],
+                ["30 dager", fmt(r["30 dager %"], "%")],
+                ["90 dager", fmt(r["90 dager %"], "%")],
                 ["1 år", fmt(r["1 år %"], "%")],
+                ["3 mnd (ca. 63 børsdager)", fmt(r["3 mnd %"], "%")],
+                ["6 mnd", fmt(r["6 mnd %"], "%")],
                 ["RSI14", fmt(r["RSI14"])],
                 ["MACD", fmt(r["MACD"], decimals=3)],
                 ["Volatilitet", fmt(r["Volatilitet %"], "%")],
@@ -460,7 +494,7 @@ with tab2:
         help="Full analyse henter flere fundamentale nøkkeltall. Hurtigmodus er raskere og fokuserer mest på kurs/teknisk data.",
     )
     min_score = st.slider("Vis bare score over", 0, 90, 0, step=5)
-    sort_by = st.selectbox("Sorter etter", ["Score", "Direkteavkastning %", "Utbytte-score", "Teknisk", "Fundamental", "Kvalitet", "Risiko", "1 år %"])
+    sort_by = st.selectbox("Sorter etter", ["Score", "Kurs", "30 dager %", "90 dager %", "1 år %", "Direkteavkastning %", "Utbytte-score", "Teknisk", "Fundamental", "Kvalitet", "Risiko"])
 
     if st.button("Analyser Oslo Børs Top 50", type="primary", use_container_width=True):
         results = []
@@ -501,13 +535,14 @@ with tab2:
             df.index = df.index + 1
 
             show_cols = [
-                "Markedsverdi-rang", "Ticker", "Selskap", "Siste kursdato", "Score", "Vurdering", "Teknisk",
-                "Fundamental", "Kvalitet", "Risiko", "Utbytte-score", "1 år %",
+                "Markedsverdi-rang", "Ticker", "Selskap", "Kurs", "Siste kursdato",
+                "30 dager %", "Trend 30d", "90 dager %", "Trend 90d", "1 år %", "Trend 1 år",
+                "Score", "Vurdering", "Teknisk", "Fundamental", "Kvalitet", "Risiko", "Utbytte-score",
                 "Volatilitet %", "Direkteavkastning %", "P/E", "ROE %"
             ]
             display = df[show_cols].copy()
-            for col in ["Score", "Teknisk", "Fundamental", "Kvalitet", "Risiko", "Utbytte-score",
-                        "1 år %", "Volatilitet %", "Direkteavkastning %", "P/E", "ROE %"]:
+            for col in ["Kurs", "30 dager %", "90 dager %", "1 år %", "Score", "Teknisk", "Fundamental",
+                        "Kvalitet", "Risiko", "Utbytte-score", "Volatilitet %", "Direkteavkastning %", "P/E", "ROE %"]:
                 display[col] = pd.to_numeric(display[col], errors="coerce").round(1)
 
             mode_txt = st.session_state.top50_mode or mode
@@ -517,7 +552,11 @@ with tab2:
             st.markdown("### Topp 10")
             for rank, (_, row) in enumerate(df.head(10).iterrows(), start=1):
                 div_txt = fmt(row["Direkteavkastning %"], "%")
-                st.write(f"**{rank}. {row['Ticker']} — {row['Score']:.0f}/100** · {row['Selskap']} · Utbytte {div_txt}")
+                st.write(
+                    f"**{rank}. {row['Ticker']} — {row['Score']:.0f}/100** · {row['Selskap']} · "
+                    f"Kurs {row['Kurs']:.2f} · 30d {fmt(row['30 dager %'], '%')} · "
+                    f"90d {fmt(row['90 dager %'], '%')} · 1 år {fmt(row['1 år %'], '%')} · Utbytte {div_txt}"
+                )
 
             st.markdown("### Send ticker til enkeltanalyse")
             if len(df):
