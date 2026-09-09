@@ -33,54 +33,65 @@ st.markdown(
 )
 
 st.title("📊 Aksjeanalyse Pro")
-st.caption("Detaljanalyse og screening av 40 store Oslo Børs-aksjer. Ikke investeringsråd.")
+st.caption("Detaljanalyse og screening av 50 store Oslo Børs-aksjer. Ikke investeringsråd.")
 
-# Kuratert Top 40-liste. Kan redigeres i appen dersom ønskelig.
-TOP40 = [
+# Kuratert Top 50-liste. Kan redigeres i appen dersom ønskelig.
+TOP50 = [
     ("EQNR.OL", "Equinor"),
     ("DNB.OL", "DNB Bank"),
     ("KOG.OL", "Kongsberg Gruppen"),
-    ("TEL.OL", "Telenor"),
-    ("NHY.OL", "Norsk Hydro"),
     ("AKRBP.OL", "Aker BP"),
-    ("MOWI.OL", "Mowi"),
-    ("ORK.OL", "Orkla"),
+    ("NHY.OL", "Norsk Hydro"),
+    ("TEL.OL", "Telenor"),
+    ("GJF.OL", "Gjensidige"),
+    ("VAR.OL", "Vår Energi"),
+    ("AKER.OL", "Aker"),
     ("YAR.OL", "Yara"),
-    ("SALM.OL", "SalMar"),
-    ("TOM.OL", "Tomra"),
+    ("MOWI.OL", "Mowi"),
     ("SUBC.OL", "Subsea 7"),
     ("FRO.OL", "Frontline"),
-    ("GJF.OL", "Gjensidige"),
+    ("ORK.OL", "Orkla"),
     ("STB.OL", "Storebrand"),
-    ("AUSS.OL", "Austevoll Seafood"),
-    ("BWLPG.OL", "BW LPG"),
-    ("TGS.OL", "TGS"),
-    ("BAKKA.OL", "Bakkafrost"),
-    ("SCHA.OL", "Schibsted"),
-    ("AKSO.OL", "Aker Solutions"),
-    ("ELK.OL", "Elkem"),
-    ("HAFNI.OL", "Hafnia"),
-    ("LSG.OL", "Lerøy Seafood"),
-    ("VAR.OL", "Vår Energi"),
+    ("SB1NO.OL", "SpareBank 1 Sør-Norge"),
+    ("SALM.OL", "SalMar"),
+    ("WAWI.OL", "Wallenius Wilhelmsen"),
     ("AUTO.OL", "AutoStore"),
-    ("SCATC.OL", "Scatec"),
-    ("MPCC.OL", "MPC Container Ships"),
-    ("GOGL.OL", "Golden Ocean"),
-    ("NAS.OL", "Norwegian Air Shuttle"),
-    ("NEL.OL", "Nel"),
-    ("BORR.OL", "Borr Drilling"),
-    ("DOF.OL", "DOF Group"),
-    ("DNO.OL", "DNO"),
-    ("AFG.OL", "AF Gruppen"),
-    ("VEI.OL", "Veidekke"),
-    ("KIT.OL", "Kitron"),
-    ("ATEA.OL", "Atea"),
-    ("CRAYN.OL", "Crayon"),
+    ("VEND.OL", "Vend Marketplaces"),
+    ("SCHB.OL", "Schibsted B"),
+    ("HAFNI.OL", "Hafnia"),
     ("PROT.OL", "Protector Forsikring"),
+    ("OLT.OL", "Olav Thon Eiendomsselskap"),
+    ("NOD.OL", "Nordic Semiconductor"),
+    ("BWLPG.OL", "BW LPG"),
+    ("SCHA.OL", "Schibsted A"),
+    ("HAUTO.OL", "Höegh Autoliners"),
+    ("DOFG.OL", "DOF Group"),
+    ("MING.OL", "SpareBank 1 SMN"),
+    ("TOM.OL", "Tomra"),
+    ("VEI.OL", "Veidekke"),
+    ("SPOL.OL", "SpareBank 1 Østlandet"),
+    ("TGS.OL", "TGS"),
+    ("WWI.OL", "Wilh. Wilhelmsen Holding A"),
+    ("BAKKA.OL", "Bakkafrost"),
+    ("LSG.OL", "Lerøy Seafood"),
+    ("ELK.OL", "Elkem"),
+    ("ODL.OL", "Odfjell Drilling"),
+    ("KIT.OL", "Kitron"),
+    ("OET.OL", "Okeanis Eco Tankers"),
+    ("AFG.OL", "AF Gruppen"),
+    ("CADLR.OL", "Cadeler"),
+    ("AKSO.OL", "Aker Solutions"),
+    ("ATEA.OL", "Atea"),
+    ("ENTRA.OL", "Entra"),
+    ("DNO.OL", "DNO"),
+    ("SNI.OL", "Stolt-Nielsen"),
+    ("SVEG.OL", "Sparebanken Vest"),
+    ("NONG.OL", "SpareBank 1 Nord-Norge")
 ]
 
-TOP40_TICKERS = [t for t, _ in TOP40]
-TOP40_LABELS = {t: f"{t} — {name}" for t, name in TOP40}
+TOP50_TICKERS = [t for t, _ in TOP50]
+TOP50_LABELS = {t: f"{t} — {name}" for t, name in TOP50}
+MARKET_CAP_RANK = {t: i for i, (t, _) in enumerate(TOP50, start=1)}
 
 @st.cache_data(ttl=900, show_spinner=False)
 def get_history(ticker, period="2y"):
@@ -174,7 +185,7 @@ def analyze_ticker(ticker, full=True):
     from_high = (current / high_52 - 1) * 100
 
     info = get_info(ticker) if full else {}
-    name = info.get("shortName") or info.get("longName") or dict(TOP40).get(ticker, ticker)
+    name = info.get("shortName") or info.get("longName") or dict(TOP50).get(ticker, ticker)
     currency = info.get("currency") or "NOK"
 
     pe = safe_num(info.get("trailingPE"))
@@ -273,7 +284,7 @@ def analyze_ticker(ticker, full=True):
     fair_value = current * 18 / pe if pe is not None and pe > 0 else None
 
     return {
-        "Ticker": ticker, "Selskap": name, "Valuta": currency, "Kurs": current,
+        "Markedsverdi-rang": MARKET_CAP_RANK.get(ticker), "Ticker": ticker, "Selskap": name, "Valuta": currency, "Kurs": current,
         "Score": total, "Teknisk": tech, "Fundamental": fundamental, "Risiko": risk, "Kvalitet": quality,
         "1 år %": ret_1y, "6 mnd %": ret_6m, "3 mnd %": ret_3m,
         "Volatilitet %": vol, "Sharpe": sharpe, "Maks drawdown %": mdd,
@@ -291,15 +302,15 @@ def analyze_ticker(ticker, full=True):
 if "selected_ticker" not in st.session_state:
     st.session_state.selected_ticker = "EQNR.OL"
 
-tab1, tab2, tab3 = st.tabs(["🔬 Enkeltanalyse", "🏆 Top 40", "📋 Tickerliste"])
+tab1, tab2, tab3 = st.tabs(["🔬 Enkeltanalyse", "🏆 Top 50", "📋 Tickerliste"])
 
 with tab1:
-    st.markdown("### Velg fra Top 40")
+    st.markdown("### Velg fra Top 50")
     selected_from_list = st.selectbox(
         "Velg aksje",
-        options=TOP40_TICKERS,
-        index=TOP40_TICKERS.index(st.session_state.selected_ticker) if st.session_state.selected_ticker in TOP40_TICKERS else 0,
-        format_func=lambda x: TOP40_LABELS[x],
+        options=TOP50_TICKERS,
+        index=TOP50_TICKERS.index(st.session_state.selected_ticker) if st.session_state.selected_ticker in TOP50_TICKERS else 0,
+        format_func=lambda x: TOP50_LABELS[x],
     )
 
     if st.button("Bruk valgt ticker", use_container_width=True):
@@ -373,7 +384,7 @@ with tab1:
                 st.caption("Dette er ikke et kursmål. Beregningen normaliserer bare dagens resultat mot P/E 18.")
 
 with tab2:
-    st.markdown("### Analyser 40 aksjer")
+    st.markdown("### Analyser 50 aksjer")
     mode = st.radio(
         "Analysemodus",
         ["Full analyse", "Hurtigmodus"],
@@ -383,18 +394,18 @@ with tab2:
     min_score = st.slider("Vis bare score over", 0, 90, 0, step=5)
     sort_by = st.selectbox("Sorter etter", ["Score", "Direkteavkastning %", "Teknisk", "Fundamental", "Risiko", "Kvalitet", "1 år %"])
 
-    if st.button("Analyser Oslo Børs Top 40", type="primary", use_container_width=True):
+    if st.button("Analyser Oslo Børs Top 50", type="primary", use_container_width=True):
         results = []
         progress = st.progress(0)
         status = st.empty()
         full = mode == "Full analyse"
 
-        for i, ticker40 in enumerate(TOP40_TICKERS):
-            status.write(f"Analyserer {TOP40_LABELS[ticker40]} ({i+1}/40)...")
+        for i, ticker40 in enumerate(TOP50_TICKERS):
+            status.write(f"Analyserer {TOP50_LABELS[ticker40]} ({i+1}/50)...")
             r = analyze_ticker(ticker40, full=full)
             if r:
                 results.append(r)
-            progress.progress((i + 1) / 40)
+            progress.progress((i + 1) / 50)
 
         status.empty()
 
@@ -415,7 +426,7 @@ with tab2:
             df.index = df.index + 1
 
             show_cols = [
-                "Ticker", "Selskap", "Score", "Vurdering", "Teknisk",
+                "Markedsverdi-rang", "Ticker", "Selskap", "Score", "Vurdering", "Teknisk",
                 "Fundamental", "Risiko", "Kvalitet", "1 år %",
                 "Volatilitet %", "Direkteavkastning %", "P/E", "ROE %"
             ]
@@ -423,7 +434,7 @@ with tab2:
             for col in ["Score", "Teknisk", "Fundamental", "Risiko", "Kvalitet", "1 år %", "Volatilitet %", "Direkteavkastning %", "P/E", "ROE %"]:
                 display[col] = pd.to_numeric(display[col], errors="coerce").round(1)
 
-            st.success(f"Analyserte {len(results)} av 40 aksjer.")
+            st.success(f"Analyserte {len(results)} av 50 aksjer.")
             st.dataframe(display, use_container_width=True)
 
             st.markdown("### Topp 10")
@@ -445,24 +456,24 @@ with tab2:
 
             csv = display.to_csv(index=True).encode("utf-8")
             st.download_button(
-                "Last ned Top 40-resultat som CSV",
+                "Last ned Top 50-resultat som CSV",
                 data=csv,
-                file_name="oslo_bors_top40_analyse.csv",
+                file_name="oslo_bors_top50_analyse.csv",
                 mime="text/csv",
                 use_container_width=True,
             )
 
 with tab3:
-    st.markdown("### Top 40 tickerliste")
+    st.markdown("### Top 50 tickerliste")
     st.write("Trykk og hold på en ticker på iPhone for å kopiere den, eller velg den direkte i Enkeltanalyse.")
-    ticker_df = pd.DataFrame(TOP40, columns=["Ticker", "Selskap"])
+    ticker_df = pd.DataFrame([(i, t, n) for i, (t, n) in enumerate(TOP50, start=1)], columns=["Nr.", "Ticker", "Selskap"])
     st.dataframe(ticker_df, hide_index=True, use_container_width=True)
 
     st.markdown("### Kopierbar liste")
-    st.code("\n".join(TOP40_TICKERS), language=None)
+    st.code("\n".join(TOP50_TICKERS), language=None)
 
 st.markdown("---")
 st.caption(
-    "Top 40-listen er en kuratert liste over store/aktive Oslo Børs-selskaper og er ikke en offisiell indeks. "
+    "Top 50-listen er et øyeblikksbilde av de største Oslo Børs-selskapene etter markedsverdi, kontrollert 9. september 2026. Rangeringen endrer seg over tid. "
     "Scoren er mekanisk og kan ikke forutsi fremtidig avkastning."
 )
