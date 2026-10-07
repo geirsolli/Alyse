@@ -14,6 +14,35 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
+st.markdown("""
+<style>
+.block-container {
+    max-width: 96vw !important;
+    padding-left: 1.2rem !important;
+    padding-right: 1.2rem !important;
+}
+[data-testid="stDataFrame"], [data-testid="stDataFrame"] * {
+    font-size: 0.78rem !important;
+}
+@media (min-width: 900px) {
+    .stMarkdown p, label { font-size: 0.88rem; }
+    h1 { font-size: 1.8rem !important; }
+    h2 { font-size: 1.45rem !important; }
+    h3 { font-size: 1.2rem !important; }
+}
+@media (max-width: 899px) {
+    .block-container {
+        max-width: 100% !important;
+        padding-left: 0.6rem !important;
+        padding-right: 0.6rem !important;
+    }
+    [data-testid="stDataFrame"], [data-testid="stDataFrame"] * {
+        font-size: 0.82rem !important;
+    }
+}
+</style>
+""", unsafe_allow_html=True)
+
 st.markdown(
     """
     <style>
@@ -788,9 +817,8 @@ with tab2:
             show_cols = [
                 "Vurdering", "Score", "Ticker", "Selskap", "Kurs",
                 "30 dager %", "90 dager %", "1 år %",
-                "Teknisk", "Fundamental", "Kvalitet", "Risiko", "Utbytte-score",
-                "Direkteavkastning %", "P/E", "ROE %", "Volatilitet %",
-                "Siste kursdato", "Markedsverdi-rang"
+                "Teknisk", "Fundamental", "Kvalitet", "Risiko",
+                "Direkteavkastning %", "P/E", "ROE %"
             ]
             display = df[show_cols].copy()
             for col in ["Kurs", "30 dager %", "90 dager %", "1 år %", "Score", "Teknisk", "Fundamental",
@@ -801,7 +829,7 @@ with tab2:
             st.success(f"Analyserte {len(results)} av {N_STOCKS} aksjer · {MARKET_NAME} · {mode_txt}.")
 
             st.markdown("### Resultater")
-            st.caption("De viktigste kolonnene står først. Sveip sidelengs på mobil eller bruk rullefeltet nederst på PC for flere nøkkeltall.")
+            st.caption("Tabellen er optimalisert for PC-bredde med mindre skrift og de viktigste nøkkeltallene. På mobil kan du fortsatt sveipe sidelengs.")
             st.caption("Sveip sidelengs i tabellen for å se alle kolonnene.")
             st.dataframe(
                 display,
@@ -809,17 +837,17 @@ with tab2:
                 height=720,
                 hide_index=True,
                 column_config={
-                    "Vurdering": st.column_config.TextColumn("Vurdering", width="medium"),
-                    "Score": st.column_config.NumberColumn("Score", format="%.0f"),
+                    "Vurdering": st.column_config.TextColumn("Vurdering", width="small"),
+                    "Score": st.column_config.NumberColumn("Score", format="%.0f", width="small"),
                     "Ticker": st.column_config.TextColumn("Ticker", width="small"),
                     "Selskap": st.column_config.TextColumn("Selskap", width="medium"),
                     "Kurs": st.column_config.NumberColumn("Kurs", format="%.2f"),
                     "30 dager %": st.column_config.NumberColumn("30d %", format="%.1f%%"),
                     "90 dager %": st.column_config.NumberColumn("90d %", format="%.1f%%"),
                     "1 år %": st.column_config.NumberColumn("1 år %", format="%.1f%%"),
-                    "Teknisk": st.column_config.NumberColumn("Teknisk", format="%.0f"),
+                    "Teknisk": st.column_config.NumberColumn("Tekn.", format="%.0f"),
                     "Fundamental": st.column_config.NumberColumn("Fund.", format="%.0f"),
-                    "Kvalitet": st.column_config.NumberColumn("Kvalitet", format="%.0f"),
+                    "Kvalitet": st.column_config.NumberColumn("Kval.", format="%.0f"),
                     "Risiko": st.column_config.NumberColumn("Risiko", format="%.0f"),
                     "Utbytte-score": st.column_config.NumberColumn("Utbytte", format="%.0f"),
                     "Direkteavkastning %": st.column_config.NumberColumn("Yield %", format="%.1f%%"),
@@ -861,6 +889,6 @@ st.caption(
     "Sammensetning og rangering kan endre seg. Scoren er mekanisk og kan ikke forutsi fremtidig avkastning."
 )
 st.markdown(
-    """<div style="text-align:center;margin-top:2.5rem;padding:1rem 0;font-size:0.8rem;opacity:0.65;border-top:1px solid rgba(128,128,128,0.25);">© GS, Skjetten 2026 · Smart Aksjeanalyse V6.6</div>""",
+    """<div style="text-align:center;margin-top:2.5rem;padding:1rem 0;font-size:0.8rem;opacity:0.65;border-top:1px solid rgba(128,128,128,0.25);">© GS, Skjetten 2026 · Smart Aksjeanalyse V6.7</div>""",
     unsafe_allow_html=True,
 )
