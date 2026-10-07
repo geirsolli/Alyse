@@ -555,8 +555,6 @@ def analyze_ticker(ticker, full=True):
     if np.isfinite(dividend_score):
         parts.append(dividend_score); weights.append(0.10)
     total = round(float(np.average(parts, weights=weights)), 1)
-    if insider_score is not None:
-        total = round(total * 0.93 + insider_score * 0.07, 1)
 
     fair_value = current * 18 / pe if pe is not None and pe > 0 else None
 
@@ -678,27 +676,6 @@ with tab1:
             chart["MA200"] = chart["Close"].rolling(200).mean()
             st.line_chart(chart, use_container_width=True)
 
-            st.markdown("### 👤 Innsidehandel")
-            if r["Innside-score"] is None:
-                st.warning(
-                    "Ingen sikre automatiske innsidehandler funnet. Dette betyr ikke nødvendigvis at det ikke finnes "
-                    "primærinnsidehandler. Kontroller Euronext/Oslo Børs. Manglende data påvirker ikke totalscoren."
-                )
-                i1, i2 = st.columns(2)
-                i1.metric("Innside-score", "–")
-                i2.metric("Innside 90d", "Ingen sikre data")
-            else:
-                i1, i2, i3 = st.columns(3)
-                i1.metric("Innside-score", f'{r["Innside-score"]:.0f}/100')
-                i2.metric("Kjøp/salg 90d", r["Innside 90d"])
-                i3.metric("Siste handel", r["Siste innsidehandel"])
-                st.caption("Kilde vises i resultatet. For Oslo forsøkes Euronext Oslo Børs først; Yahoo/yfinance brukes som reserve. Innside teller 7 % når sikre data finnes.")
-            st.link_button(
-                "🏛️ Kontroller primærinnsidehandel hos Euronext",
-                "https://live.euronext.com/nb/markets/oslo/equities/company-news",
-                use_container_width=True,
-            )
-
             st.markdown("### Om selskapet")
             info_rows = []
             if r.get("Sektor"):
@@ -765,7 +742,7 @@ with tab2:
         help="Full analyse henter flere fundamentale nøkkeltall. Hurtigmodus er raskere og fokuserer mest på kurs/teknisk data.",
     )
     min_score = st.slider("Vis bare score over", 0, 90, 0, step=5)
-    sort_by = st.selectbox("Sorter etter", ["Score", "Innside-score", "Kurs", "30 dager %", "90 dager %", "1 år %", "Direkteavkastning %", "Utbytte-score", "Teknisk", "Fundamental", "Kvalitet", "Risiko"])
+    sort_by = st.selectbox("Sorter etter", ["Score", "Kurs", "30 dager %", "90 dager %", "1 år %", "Direkteavkastning %", "Utbytte-score", "Teknisk", "Fundamental", "Kvalitet", "Risiko"])
 
     if st.button(f"Analyser {MARKET_NAME} ({N_STOCKS} aksjer)", type="primary", use_container_width=True):
         results = []
@@ -816,7 +793,7 @@ with tab2:
                 "Siste kursdato", "Markedsverdi-rang"
             ]
             display = df[show_cols].copy()
-            for col in ["Kurs", "30 dager %", "90 dager %", "1 år %", "Score", "Innside-score", "Teknisk", "Fundamental",
+            for col in ["Kurs", "30 dager %", "90 dager %", "1 år %", "Score", "Teknisk", "Fundamental",
                         "Kvalitet", "Risiko", "Utbytte-score", "Volatilitet %", "Direkteavkastning %", "P/E", "ROE %"]:
                 display[col] = pd.to_numeric(display[col], errors="coerce").round(1)
 
@@ -854,20 +831,20 @@ with tab2:
             )
 
             st.markdown("### Topp 10")
-        top10 = filtered.head(10)[["Ticker", "Selskap", "Score", "Vurdering", "Kurs", "30 dager %", "90 dager %", "1 år %"]].copy()
-        st.dataframe(
-            top10,
-            use_container_width=True,
-            hide_index=True,
-            height=390,
-            column_config={
-                "Score": st.column_config.NumberColumn("Score", format="%.0f"),
-                "Kurs": st.column_config.NumberColumn("Kurs", format="%.2f"),
-                "30 dager %": st.column_config.NumberColumn("30d %", format="%.1f%%"),
-                "90 dager %": st.column_config.NumberColumn("90d %", format="%.1f%%"),
-                "1 år %": st.column_config.NumberColumn("1 år %", format="%.1f%%"),
-            },
-        )
+            top10 = df.head(10)[["Ticker", "Selskap", "Score", "Vurdering", "Kurs", "30 dager %", "90 dager %", "1 år %"]].copy()
+            st.dataframe(
+                top10,
+                use_container_width=True,
+                hide_index=True,
+                height=390,
+                column_config={
+                    "Score": st.column_config.NumberColumn("Score", format="%.0f"),
+                    "Kurs": st.column_config.NumberColumn("Kurs", format="%.2f"),
+                    "30 dager %": st.column_config.NumberColumn("30d %", format="%.1f%%"),
+                    "90 dager %": st.column_config.NumberColumn("90d %", format="%.1f%%"),
+                    "1 år %": st.column_config.NumberColumn("1 år %", format="%.1f%%"),
+                },
+            )
 
 with tab3:
     st.markdown(f"### Tickerliste · {MARKET_NAME}")
@@ -884,6 +861,6 @@ st.caption(
     "Sammensetning og rangering kan endre seg. Scoren er mekanisk og kan ikke forutsi fremtidig avkastning."
 )
 st.markdown(
-    """<div style="text-align:center;margin-top:2.5rem;padding:1rem 0;font-size:0.8rem;opacity:0.65;border-top:1px solid rgba(128,128,128,0.25);">© GS, Skjetten 2026 · Smart Aksjeanalyse V6.5</div>""",
+    """<div style="text-align:center;margin-top:2.5rem;padding:1rem 0;font-size:0.8rem;opacity:0.65;border-top:1px solid rgba(128,128,128,0.25);">© GS, Skjetten 2026 · Smart Aksjeanalyse V6.6</div>""",
     unsafe_allow_html=True,
 )
