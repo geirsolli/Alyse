@@ -162,6 +162,44 @@ def fmt(v, suffix="", decimals=1):
     except Exception:
         return "N/A"
 
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def get_insider_data(ticker):
+    try:
+        tx = yf.Ticker(ticker).insider_transactions
+        return None if tx is None or len(tx) == 0 else tx.reset_index(drop=True)
+    except Exception:
+        return None
+
+def score_insider_activity(tx):
+    if tx is None or len(tx) == 0:
+        return None, 0, 0, None
+    now=pd.Timestamp.now(tz=None); bp=sp=0.0; buys90=sells90=0; latest=None
+    for _,row in tx.iterrows():
+        txt=" ".join(str(v) for v in row.values if pd.notna(v)).lower()
+        if any(k in txt for k in ["option","award","grant","gift","restricted","rsu","exercise","conversion","vesting","borrowed","redelivery"]): continue
+        dt=None
+        for col in ["Start Date","Date","Transaction Date"]:
+            if col in row.index and pd.notna(row[col]):
+                try: dt=pd.Timestamp(row[col]).tz_localize(None); break
+                except Exception: pass
+        if dt is None: continue
+        days=max(0,(now.normalize()-dt.normalize()).days)
+        if days>365: continue
+        latest=dt if latest is None or dt>latest else latest
+        buy=any(k in txt for k in ["purchase","buy","bought","acquisition"])
+        sell=any(k in txt for k in ["sale","sell","sold","disposition"])
+        if not (buy or sell): continue
+        rec=1.0 if days<=30 else 0.75 if days<=90 else 0.45 if days<=180 else 0.20
+        if buy:
+            bp+=rec
+            if days<=90: buys90+=1
+        elif sell:
+            sp+=rec*0.35
+            if days<=90: sells90+=1
+    if bp==0 and sp==0: return None,0,0,latest
+    return float(np.clip(50+(bp-sp)*18,15,100)),buys90,sells90,latest
+
 def analyze_ticker(ticker, full=True):
     hist = get_history(ticker, "2y")
     if hist is None or hist.empty or "Close" not in hist.columns:
@@ -209,6 +247,8 @@ def analyze_ticker(ticker, full=True):
     from_high = (current / high_52 - 1) * 100
 
     info = get_info(ticker) if full else {}
+    insider_tx = get_insider_data(ticker) if full else None
+    insider_score, insider_buys90, insider_sells90, insider_latest = score_insider_activity(insider_tx)
     name = info.get("shortName") or info.get("longName") or dict(TOP50).get(ticker, ticker)
     currency = info.get("currency") or "NOK"
     website = info.get("website")
@@ -338,6 +378,8 @@ def analyze_ticker(ticker, full=True):
     if np.isfinite(dividend_score):
         parts.append(dividend_score); weights.append(0.10)
     total = round(float(np.average(parts, weights=weights)), 1)
+    if insider_score is not None:
+        total = round(total * 0.93 + insider_score * 0.07, 1)
 
     fair_value = current * 18 / pe if pe is not None and pe > 0 else None
 
@@ -354,7 +396,12 @@ def analyze_ticker(ticker, full=True):
         "Markedsverdi-rang": MARKET_CAP_RANK.get(ticker), "Ticker": ticker, "Selskap": name, "Valuta": currency, "Kurs": current,
         "Siste kursdato": last_price_date, "Nettside": website, "Yahoo URL": yahoo_url,
         "Sektor": sector, "Bransje": industry, "Beskrivelse": business_summary,
-        "Score": total, "Teknisk": tech, "Fundamental": fundamental, "Risiko": risk, "Kvalitet": quality,
+        "Score": total,
+        "Innside-score": insider_score,
+        "Innside 90d": f"+{insider_buys90}/-{insider_sells90}" if insider_score is not None else "Ingen sikre data",
+        "Innside-kilde": "Yahoo/yfinance" if insider_score is not None else "Euronext-kontroll",
+        "Siste innsidehandel": insider_latest.strftime("%d.%m.%Y") if insider_latest is not None else "–",
+        "Teknisk": tech, "Fundamental": fundamental, "Risiko": risk, "Kvalitet": quality,
         "30 dager %": ret_30d, "90 dager %": ret_90d, "1 år %": ret_1y,
         "Trend 30d": trend_label(ret_30d), "Trend 90d": trend_label(ret_90d), "Trend 1 år": trend_label(ret_1y),
         "6 mnd %": ret_6m, "3 mnd %": ret_3m,
@@ -432,6 +479,27 @@ with tab1:
             chart["MA200"] = chart["Close"].rolling(200).mean()
             st.line_chart(chart, use_container_width=True)
 
+            st.markdown("### 👤 Innsidehandel")
+            if r["Innside-score"] is None:
+                st.warning(
+                    "Ingen sikre automatiske innside-data funnet. Dette betyr ikke nødvendigvis at det ikke finnes "
+                    "primærinnsidehandler. Kontroller Euronext/Oslo Børs. Manglende data påvirker ikke totalscoren."
+                )
+                i1, i2 = st.columns(2)
+                i1.metric("Innside-score", "–")
+                i2.metric("Innside 90d", "Ingen sikre data")
+            else:
+                i1, i2, i3 = st.columns(3)
+                i1.metric("Innside-score", f'{r["Innside-score"]:.0f}/100')
+                i2.metric("Kjøp/salg 90d", r["Innside 90d"])
+                i3.metric("Siste handel", r["Siste innsidehandel"])
+                st.caption("Automatisk strukturert kilde: Yahoo/yfinance. Innside teller 7 % når sikre data finnes.")
+            st.link_button(
+                "🏛️ Kontroller primærinnsidehandel hos Euronext",
+                "https://live.euronext.com/nb/markets/oslo/equities/company-news",
+                use_container_width=True,
+            )
+
             st.markdown("### Om selskapet")
             info_rows = []
             if r.get("Sektor"):
@@ -498,7 +566,7 @@ with tab2:
         help="Full analyse henter flere fundamentale nøkkeltall. Hurtigmodus er raskere og fokuserer mest på kurs/teknisk data.",
     )
     min_score = st.slider("Vis bare score over", 0, 90, 0, step=5)
-    sort_by = st.selectbox("Sorter etter", ["Score", "Kurs", "30 dager %", "90 dager %", "1 år %", "Direkteavkastning %", "Utbytte-score", "Teknisk", "Fundamental", "Kvalitet", "Risiko"])
+    sort_by = st.selectbox("Sorter etter", ["Score", "Innside-score", "Kurs", "30 dager %", "90 dager %", "1 år %", "Direkteavkastning %", "Utbytte-score", "Teknisk", "Fundamental", "Kvalitet", "Risiko"])
 
     if st.button("Analyser Oslo Børs Top 50", type="primary", use_container_width=True):
         results = []
@@ -539,13 +607,13 @@ with tab2:
             df.index = df.index + 1
 
             show_cols = [
-                "Markedsverdi-rang", "Ticker", "Selskap", "Kurs", "Siste kursdato",
-                "30 dager %", "90 dager %", "1 år %",
+                "Markedsverdi-rang", "Ticker", "Selskap", "Innside-score", "Innside 90d", "Innside-kilde",
+                "Kurs", "Siste kursdato", "30 dager %", "90 dager %", "1 år %",
                 "Score", "Vurdering", "Teknisk", "Fundamental", "Kvalitet", "Risiko", "Utbytte-score",
                 "Volatilitet %", "Direkteavkastning %", "P/E", "ROE %"
             ]
             display = df[show_cols].copy()
-            for col in ["Kurs", "30 dager %", "90 dager %", "1 år %", "Score", "Teknisk", "Fundamental",
+            for col in ["Kurs", "30 dager %", "90 dager %", "1 år %", "Score", "Innside-score", "Teknisk", "Fundamental",
                         "Kvalitet", "Risiko", "Utbytte-score", "Volatilitet %", "Direkteavkastning %", "P/E", "ROE %"]:
                 display[col] = pd.to_numeric(display[col], errors="coerce").round(1)
 
@@ -553,6 +621,7 @@ with tab2:
             st.success(f"Analyserte {len(results)} av 50 aksjer · {mode_txt}.")
 
             st.markdown("### Resultater")
+            st.caption("👤 Innside-score og Innside 90d ligger nå først i tabellen. «Ingen sikre data» betyr at innside ikke påvirker totalscoren.")
             st.caption("Sveip sidelengs i tabellen for å se alle kolonnene.")
             st.dataframe(
                 display,
@@ -627,8 +696,6 @@ st.caption(
     "Scoren er mekanisk og kan ikke forutsi fremtidig avkastning."
 )
 st.markdown(
-    """<div style="text-align:center;margin-top:2.5rem;padding:1rem 0;font-size:0.8rem;opacity:0.65;border-top:1px solid rgba(128,128,128,0.25);">
-    © GS, Skjetten 2026
-    </div>""",
+    """<div style="text-align:center;margin-top:2.5rem;padding:1rem 0;font-size:0.8rem;opacity:0.65;border-top:1px solid rgba(128,128,128,0.25);">© GS, Skjetten 2026</div>""",
     unsafe_allow_html=True,
 )
