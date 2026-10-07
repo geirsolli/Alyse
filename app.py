@@ -817,8 +817,7 @@ with tab2:
             show_cols = [
                 "Vurdering", "Score", "Ticker", "Selskap", "Kurs",
                 "30 dager %", "90 dager %", "1 år %",
-                "Teknisk", "Fundamental", "Kvalitet", "Risiko",
-                "Direkteavkastning %", "P/E", "ROE %"
+                "Teknisk", "Fundamental", "Kvalitet", "Risiko"
             ]
             display = df[show_cols].copy()
             for col in ["Kurs", "30 dager %", "90 dager %", "1 år %", "Score", "Teknisk", "Fundamental",
@@ -830,7 +829,7 @@ with tab2:
             st.success(f"Analyserte {len(results)} av {N_STOCKS} aksjer · {MARKET_NAME} · {mode_txt}.")
 
             st.markdown("### Resultater")
-            st.caption("Tabellen er optimalisert for PC-bredde med mindre skrift og de viktigste nøkkeltallene. På mobil kan du fortsatt sveipe sidelengs.")
+            st.caption("Hovedtabellen viser bare de viktigste nøkkeltallene slik at den skal få plass på PC. Velg en aksje under tabellen for flere detaljer.")
             st.caption("Sveip sidelengs i tabellen for å se alle kolonnene.")
             st.dataframe(
                 display,
@@ -850,10 +849,42 @@ with tab2:
                     "Fundamental": st.column_config.NumberColumn("Fund.", format="%.0f"),
                     "Kvalitet": st.column_config.NumberColumn("Kval.", format="%.0f"),
                     "Risiko": st.column_config.NumberColumn("Risiko", format="%.0f"),
-                    "Direkteavkastning %": st.column_config.NumberColumn("Yield %", format="%.1f%%"),
-                    "P/E": st.column_config.NumberColumn("P/E", format="%.1f"),
-                    "ROE %": st.column_config.NumberColumn("ROE %", format="%.1f%%"),
                 },
+            )
+
+            st.markdown("### 🔎 Detaljer for valgt aksje")
+            detail_options = df["Ticker"].tolist()
+            detail_ticker = st.selectbox(
+                "Velg aksje",
+                detail_options,
+                format_func=lambda t: f"{t} — {TOP50_LABELS.get(t, t).split(' — ', 1)[-1]}",
+                key="top50_detail_ticker",
+            )
+            detail_row = df.loc[df["Ticker"] == detail_ticker].iloc[0]
+
+            d1, d2, d3, d4 = st.columns(4)
+            d1.metric("Score", f"{detail_row.get('Score', 0):.0f}/100")
+            d2.metric("Kurs", f"{detail_row.get('Kurs', 0):.2f}")
+            pe_val = detail_row.get("P/E")
+            d3.metric("P/E", "N/A" if pd.isna(pe_val) else f"{pe_val:.1f}")
+            yield_val = detail_row.get("Direkteavkastning %")
+            d4.metric("Utbytte", "N/A" if pd.isna(yield_val) else f"{yield_val:.1f}%")
+
+            e1, e2, e3, e4 = st.columns(4)
+            roe_val = detail_row.get("ROE %")
+            vol_val = detail_row.get("Volatilitet %")
+            e1.metric("ROE", "N/A" if pd.isna(roe_val) else f"{roe_val:.1f}%")
+            e2.metric("Volatilitet", "N/A" if pd.isna(vol_val) else f"{vol_val:.1f}%")
+            e3.metric("30 dager", f"{detail_row.get('30 dager %', 0):.1f}%")
+            e4.metric("1 år", f"{detail_row.get('1 år %', 0):.1f}%")
+
+            st.caption(
+                f"Vurdering: {detail_row.get('Vurdering', 'N/A')} · "
+                f"Teknisk {detail_row.get('Teknisk', 'N/A')} · "
+                f"Fundamental {detail_row.get('Fundamental', 'N/A')} · "
+                f"Kvalitet {detail_row.get('Kvalitet', 'N/A')} · "
+                f"Risiko {detail_row.get('Risiko', 'N/A')} · "
+                f"Utbytte-score {detail_row.get('Utbytte-score', 'N/A')}"
             )
 
             st.markdown("### Topp 10")
@@ -887,6 +918,6 @@ st.caption(
     "Sammensetning og rangering kan endre seg. Scoren er mekanisk og kan ikke forutsi fremtidig avkastning."
 )
 st.markdown(
-    """<div style="text-align:center;margin-top:2.5rem;padding:1rem 0;font-size:0.8rem;opacity:0.65;border-top:1px solid rgba(128,128,128,0.25);">© GS, Skjetten 2026 · Smart Aksjeanalyse V6.8</div>""",
+    """<div style="text-align:center;margin-top:2.5rem;padding:1rem 0;font-size:0.8rem;opacity:0.65;border-top:1px solid rgba(128,128,128,0.25);">© GS, Skjetten 2026 · Smart Aksjeanalyse V6.9</div>""",
     unsafe_allow_html=True,
 )
