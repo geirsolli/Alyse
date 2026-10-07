@@ -429,11 +429,33 @@ def analyze_ticker(ticker, full=True):
     if len(close) < 220:
         return None
 
+    # Start alltid med siste sikre datapunkt fra historikken.
     current = float(close.iloc[-1])
+    latest_price_time = close.index[-1]
     try:
-        last_price_date = pd.Timestamp(close.index[-1]).strftime("%d.%m.%Y")
+        last_price_date = pd.Timestamp(latest_price_time).strftime("%d.%m.%Y")
     except Exception:
-        last_price_date = str(close.index[-1])
+        last_price_date = str(latest_price_time)
+    latest_time_label, latest_age = format_price_time(latest_price_time)
+
+    # Forsøk deretter å hente et ferskere 5-minutters datapunkt fra Yahoo.
+    # Hvis dette feiler, beholdes historikkverdiene over.
+    try:
+        intraday = yf.Ticker(ticker).history(
+            period="1d",
+            interval="5m",
+            auto_adjust=False,
+            prepost=False,
+        )
+        if intraday is not None and not intraday.empty and "Close" in intraday.columns:
+            intraday_close = intraday["Close"].dropna()
+            if not intraday_close.empty:
+                current = float(intraday_close.iloc[-1])
+                latest_price_time = intraday_close.index[-1]
+                last_price_date = pd.Timestamp(latest_price_time).strftime("%d.%m.%Y")
+                latest_time_label, latest_age = format_price_time(latest_price_time)
+    except Exception:
+        pass
 
     def calendar_return(days):
         try:
@@ -615,7 +637,7 @@ def analyze_ticker(ticker, full=True):
     return {
         "Markedsverdi-rang": MARKET_CAP_RANK.get(ticker), "Ticker": ticker, "Selskap": name, "Valuta": currency, "Kurs": current,
         "Siste kursdato": last_price_date,
-        "Siste kurstid": pd.Timestamp(latest_price_time).strftime("%H:%M"),
+        "Siste kurstid": pd.Timestamp(latest_price_time).strftime("%H:%M") if latest_price_time is not None else "–",
         "Siste kurstid full": latest_time_label,
         "Kursalder": latest_age,
         "Kurskilde": "Yahoo Finance / yfinance",
@@ -951,6 +973,6 @@ st.caption(
     "Sammensetning og rangering kan endre seg. Scoren er mekanisk og kan ikke forutsi fremtidig avkastning."
 )
 st.markdown(
-    """<div style="text-align:center;margin-top:2.5rem;padding:1rem 0;font-size:0.8rem;opacity:0.65;border-top:1px solid rgba(128,128,128,0.25);">© GS, Skjetten 2026 · Smart Aksjeanalyse V7.1</div>""",
+    """<div style="text-align:center;margin-top:2.5rem;padding:1rem 0;font-size:0.8rem;opacity:0.65;border-top:1px solid rgba(128,128,128,0.25);">© GS, Skjetten 2026 · Smart Aksjeanalyse V7.2</div>""",
     unsafe_allow_html=True,
 )
