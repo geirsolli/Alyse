@@ -7,6 +7,22 @@ import urllib.parse
 import html as html_lib
 import re
 
+def format_price_time(ts):
+    if ts is None or pd.isna(ts):
+        return "Ukjent", "Ukjent"
+    try:
+        t = pd.Timestamp(ts)
+        label = t.strftime("%d.%m.%Y %H:%M")
+        if t.tzinfo is not None:
+            now = pd.Timestamp.now(tz=t.tz)
+            mins = max(0, int((now - t).total_seconds() // 60))
+            age = f"{mins} min" if mins < 60 else (f"{mins//60} t {mins%60} min" if mins < 1440 else f"{mins//1440} d")
+        else:
+            age = "Ukjent"
+        return label, age
+    except Exception:
+        return str(ts), "Ukjent"
+
 st.set_page_config(
     page_title="Smart Aksjeanalyse",
     page_icon="📊",
@@ -598,7 +614,12 @@ def analyze_ticker(ticker, full=True):
 
     return {
         "Markedsverdi-rang": MARKET_CAP_RANK.get(ticker), "Ticker": ticker, "Selskap": name, "Valuta": currency, "Kurs": current,
-        "Siste kursdato": last_price_date, "Nettside": website, "Yahoo URL": yahoo_url,
+        "Siste kursdato": last_price_date,
+        "Siste kurstid": pd.Timestamp(latest_price_time).strftime("%H:%M"),
+        "Siste kurstid full": latest_time_label,
+        "Kursalder": latest_age,
+        "Kurskilde": "Yahoo Finance / yfinance",
+        "Nettside": website, "Yahoo URL": yahoo_url,
         "Sektor": sector, "Bransje": industry, "Beskrivelse": business_summary,
         "Score": total,
         "Innside-score": insider_score,
@@ -682,7 +703,11 @@ with tab1:
             a, b = st.columns(2)
             a.metric("Kurs", f"{r['Kurs']:.2f} {r['Valuta']}")
             b.metric("Total score", f"{r['Score']:.0f}/100")
-            st.caption(f"Siste tilgjengelige kursdato: **{r['Siste kursdato']}**")
+            st.caption(
+                f"Siste tilgjengelige kurs: **{r.get('Siste kurstid full', r['Siste kursdato'])}** · "
+                f"Kursalder: **{r.get('Kursalder', 'Ukjent')}** · Kilde: Yahoo Finance / yfinance. "
+                "Data kan være forsinket."
+            )
             c, d = st.columns(2)
             c.metric("30 dager", fmt(r["30 dager %"], "%"))
             d.metric("90 dager", fmt(r["90 dager %"], "%"))
@@ -815,7 +840,7 @@ with tab2:
             df.index = df.index + 1
 
             show_cols = [
-                "Vurdering", "Score", "Ticker", "Selskap", "Kurs",
+                "Vurdering", "Score", "Ticker", "Selskap", "Kurs", "Siste kurstid",
                 "30 dager %", "90 dager %", "1 år %",
                 "Teknisk", "Fundamental", "Kvalitet", "Risiko"
             ]
@@ -842,6 +867,7 @@ with tab2:
                     "Ticker": st.column_config.TextColumn("Ticker", width="small"),
                     "Selskap": st.column_config.TextColumn("Selskap", width="medium"),
                     "Kurs": st.column_config.NumberColumn("Kurs", format="%.2f"),
+                    "Siste kurstid": st.column_config.TextColumn("Tid", width="small"),
                     "30 dager %": st.column_config.NumberColumn("30d %", format="%.1f%%"),
                     "90 dager %": st.column_config.NumberColumn("90d %", format="%.1f%%"),
                     "1 år %": st.column_config.NumberColumn("1 år %", format="%.1f%%"),
@@ -877,6 +903,13 @@ with tab2:
             e2.metric("Volatilitet", "N/A" if pd.isna(vol_val) else f"{vol_val:.1f}%")
             e3.metric("30 dager", f"{detail_row.get('30 dager %', 0):.1f}%")
             e4.metric("1 år", f"{detail_row.get('1 år %', 0):.1f}%")
+
+            st.info(
+                f"🕒 Siste tilgjengelige kurs: {detail_row.get('Siste kurstid full', 'Ukjent')} · "
+                f"Kursalder: {detail_row.get('Kursalder', 'Ukjent')} · "
+                f"Kilde: {detail_row.get('Kurskilde', 'Yahoo Finance / yfinance')}. "
+                "Yahoo-data kan være forsinket og er ikke garantert sanntid."
+            )
 
             st.caption(
                 f"Vurdering: {detail_row.get('Vurdering', 'N/A')} · "
@@ -918,6 +951,6 @@ st.caption(
     "Sammensetning og rangering kan endre seg. Scoren er mekanisk og kan ikke forutsi fremtidig avkastning."
 )
 st.markdown(
-    """<div style="text-align:center;margin-top:2.5rem;padding:1rem 0;font-size:0.8rem;opacity:0.65;border-top:1px solid rgba(128,128,128,0.25);">© GS, Skjetten 2026 · Smart Aksjeanalyse V6.9</div>""",
+    """<div style="text-align:center;margin-top:2.5rem;padding:1rem 0;font-size:0.8rem;opacity:0.65;border-top:1px solid rgba(128,128,128,0.25);">© GS, Skjetten 2026 · Smart Aksjeanalyse V7.0</div>""",
     unsafe_allow_html=True,
 )
