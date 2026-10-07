@@ -197,8 +197,53 @@ MARKETS = {
     "🇺🇸 USA": USA,
 }
 
+MARKET_SCREEN = {
+    "🇳🇴 Oslo Børs": {"region": "no", "exchanges": ["OSL"]},
+    "🇸🇪 Stockholm": {"region": "se", "exchanges": ["STO"]},
+    "🇩🇰 København": {"region": "dk", "exchanges": ["CPH"]},
+    "🇫🇮 Helsinki": {"region": "fi", "exchanges": ["HEL"]},
+    "🇺🇸 USA": {"region": "us", "exchanges": ["NYQ", "NMS", "NGM"]},
+}
+
+@st.cache_data(ttl=21600, show_spinner=False)
+def get_top_market_stocks(market_key, limit=100):
+    """Hent de største aksjene etter Yahoo intraday market cap.
+    Faller tilbake til den kuraterte listen hvis Yahoo-screeneren ikke svarer.
+    """
+    fallback = MARKETS[market_key]
+    cfg = MARKET_SCREEN[market_key]
+    try:
+        q = yf.EquityQuery("and", [
+            yf.EquityQuery("eq", ["region", cfg["region"]]),
+            yf.EquityQuery("is-in", ["exchange", *cfg["exchanges"]]),
+            yf.EquityQuery("gt", ["intradaymarketcap", 0]),
+        ])
+        response = yf.screen(
+            q,
+            size=limit,
+            sortField="intradaymarketcap",
+            sortAsc=False,
+        )
+        quotes = response.get("quotes", []) if isinstance(response, dict) else []
+        rows = []
+        seen = set()
+        for quote in quotes:
+            ticker = quote.get("symbol")
+            if not ticker or ticker in seen:
+                continue
+            name = quote.get("shortName") or quote.get("longName") or ticker
+            rows.append((ticker, name))
+            seen.add(ticker)
+            if len(rows) >= limit:
+                break
+        if len(rows) >= 50:
+            return rows, "Yahoo Finance markedsverdi"
+    except Exception:
+        pass
+    return fallback[:limit], "Kuratert reserveliste"
+
 selected_market = st.selectbox("🌍 Velg børs / marked", list(MARKETS.keys()), key="selected_market")
-TOP50 = MARKETS[selected_market]
+TOP50, universe_source = get_top_market_stocks(selected_market, 100)
 TOP50_TICKERS = [t for t, _ in TOP50]
 TOP50_LABELS = {t: f"{t} — {name}" for t, name in TOP50}
 MARKET_CAP_RANK = {t: i for i, (t, _) in enumerate(TOP50, start=1)}
@@ -693,7 +738,7 @@ with st.expander("ℹ️ Slik beregnes scoren"):
 **Viktig:** Samme modell brukes på tvers av markedene. Banker, teknologi, energi, shipping og andre sektorer kan ha svært forskjellige normale nøkkeltall, så scoren bør brukes sammen med detaljanalysen.
 """)
 
-tab1, tab2, tab3 = st.tabs(["🔬 Enkeltanalyse", "🏆 Top 50", "📋 Tickerliste"])
+tab1, tab2, tab3 = st.tabs(["🔬 Enkeltanalyse", "🏆 Top 100", "📋 Tickerliste"])
 
 with tab1:
     st.markdown("### Velg fra Top 50")
@@ -811,6 +856,7 @@ with tab1:
 
 with tab2:
     st.markdown(f"### Analyser {N_STOCKS} aksjer · {MARKET_NAME}")
+    st.caption(f"Univers: {universe_source}. Målet er de 100 største etter markedsverdi når Yahoo-screeneren er tilgjengelig.")
     mode = st.radio(
         "Analysemodus",
         ["Full analyse", "Hurtigmodus"],
@@ -852,6 +898,18 @@ with tab2:
             df["Vurdering"] = df["Score"].apply(score_label)
             df["Direkteavkastning %"] = pd.to_numeric(df["Dividend yield %"], errors="coerce")
 
+            company_search = st.text_input(
+                "🔎 Søk i Top 100",
+                placeholder="Skriv ticker eller selskapsnavn, f.eks. EQNR eller Equinor",
+                key=f"top100_search_{selected_market}",
+            ).strip()
+            if company_search:
+                search_lower = company_search.lower()
+                df = df[
+                    df["Ticker"].astype(str).str.lower().str.contains(search_lower, regex=False)
+                    | df["Selskap"].astype(str).str.lower().str.contains(search_lower, regex=False)
+                ]
+
             if min_score > 0:
                 df = df[df["Score"] >= min_score]
 
@@ -876,6 +934,8 @@ with tab2:
             st.success(f"Analyserte {len(results)} av {N_STOCKS} aksjer · {MARKET_NAME} · {mode_txt}.")
 
             st.markdown("### Resultater")
+            if company_search:
+                st.caption(f"Søket «{company_search}» ga {len(df)} treff i analyserte aksjer.")
             st.caption("Hovedtabellen viser bare de viktigste nøkkeltallene slik at den skal få plass på PC. Velg en aksje under tabellen for flere detaljer.")
             st.caption("Sveip sidelengs i tabellen for å se alle kolonnene.")
             st.dataframe(
@@ -959,7 +1019,7 @@ with tab2:
             )
 
 with tab3:
-    st.markdown(f"### Tickerliste · {MARKET_NAME}")
+    st.markdown(f"### Top {N_STOCKS} tickerliste · {MARKET_NAME}")
     st.write("Trykk og hold på en ticker på iPhone for å kopiere den, eller velg den direkte i Enkeltanalyse.")
     ticker_df = pd.DataFrame([(i, t, n) for i, (t, n) in enumerate(TOP50, start=1)], columns=["Nr.", "Ticker", "Selskap"])
     st.dataframe(ticker_df, hide_index=True, use_container_width=True)
@@ -973,6 +1033,6 @@ st.caption(
     "Sammensetning og rangering kan endre seg. Scoren er mekanisk og kan ikke forutsi fremtidig avkastning."
 )
 st.markdown(
-    """<div style="text-align:center;margin-top:2.5rem;padding:1rem 0;font-size:0.8rem;opacity:0.65;border-top:1px solid rgba(128,128,128,0.25);">© GS, Skjetten 2026 · Smart Aksjeanalyse V7.2</div>""",
+    """<div style="text-align:center;margin-top:2.5rem;padding:1rem 0;font-size:0.8rem;opacity:0.65;border-top:1px solid rgba(128,128,128,0.25);">© GS, Skjetten 2026 · Smart Aksjeanalyse V7.3</div>""",
     unsafe_allow_html=True,
 )
