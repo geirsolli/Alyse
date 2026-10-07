@@ -823,7 +823,8 @@ with tab2:
             display = df[show_cols].copy()
             for col in ["Kurs", "30 dager %", "90 dager %", "1 år %", "Score", "Teknisk", "Fundamental",
                         "Kvalitet", "Risiko", "Utbytte-score", "Volatilitet %", "Direkteavkastning %", "P/E", "ROE %"]:
-                display[col] = pd.to_numeric(display[col], errors="coerce").round(1)
+                if col in display.columns:
+                    display[col] = pd.to_numeric(display[col], errors="coerce").round(1)
 
             mode_txt = st.session_state.top50_mode or mode
             st.success(f"Analyserte {len(results)} av {N_STOCKS} aksjer · {MARKET_NAME} · {mode_txt}.")
@@ -849,12 +850,9 @@ with tab2:
                     "Fundamental": st.column_config.NumberColumn("Fund.", format="%.0f"),
                     "Kvalitet": st.column_config.NumberColumn("Kval.", format="%.0f"),
                     "Risiko": st.column_config.NumberColumn("Risiko", format="%.0f"),
-                    "Utbytte-score": st.column_config.NumberColumn("Utbytte", format="%.0f"),
                     "Direkteavkastning %": st.column_config.NumberColumn("Yield %", format="%.1f%%"),
                     "P/E": st.column_config.NumberColumn("P/E", format="%.1f"),
                     "ROE %": st.column_config.NumberColumn("ROE %", format="%.1f%%"),
-                    "Volatilitet %": st.column_config.NumberColumn("Vol. %", format="%.1f%%"),
-                    "Markedsverdi-rang": st.column_config.NumberColumn("Rang", format="%d"),
                 },
             )
 
@@ -889,6 +887,6 @@ st.caption(
     "Sammensetning og rangering kan endre seg. Scoren er mekanisk og kan ikke forutsi fremtidig avkastning."
 )
 st.markdown(
-    """<div style="text-align:center;margin-top:2.5rem;padding:1rem 0;font-size:0.8rem;opacity:0.65;border-top:1px solid rgba(128,128,128,0.25);">© GS, Skjetten 2026 · Smart Aksjeanalyse V6.7</div>""",
+    """<div style="text-align:center;margin-top:2.5rem;padding:1rem 0;font-size:0.8rem;opacity:0.65;border-top:1px solid rgba(128,128,128,0.25);">© GS, Skjetten 2026 · Smart Aksjeanalyse V6.8</div>""",
     unsafe_allow_html=True,
 )
