@@ -4,7 +4,7 @@ import numpy as np
 import yfinance as yf
 
 st.set_page_config(
-    page_title="Aksjeanalyse Pro V4.3.3",
+    page_title="Smart Aksjeanalyse",
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -36,11 +36,11 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-st.title("📊 Aksjeanalyse Pro")
-st.caption("Detaljanalyse og screening av 50 store Oslo Børs-aksjer. Total score inkluderer nå utbytte. Ikke investeringsråd.")
+st.title("📊 Smart Aksjeanalyse")
+st.caption("Detaljanalyse og screening av store aksjer i Norge, Sverige, Danmark, Finland og USA. Ikke investeringsråd.")
 
-# Kuratert Top 50-liste. Kan redigeres i appen dersom ønskelig.
-TOP50 = [
+# Kuraterte markedslister. Oslo-listen er den opprinnelige Top 50-listen.
+OSLO = [
     ("EQNR.OL", "Equinor"),
     ("DNB.OL", "DNB Bank"),
     ("KOG.OL", "Kongsberg Gruppen"),
@@ -93,9 +93,68 @@ TOP50 = [
     ("NONG.OL", "SpareBank 1 Nord-Norge")
 ]
 
+SWEDEN = [
+    ("VOLV-B.ST","Volvo B"),("INVE-B.ST","Investor B"),("ATCO-A.ST","Atlas Copco A"),
+    ("ABB.ST","ABB"),("ASSA-B.ST","ASSA ABLOY B"),("ERIC-B.ST","Ericsson B"),
+    ("SEB-A.ST","SEB A"),("SWED-A.ST","Swedbank A"),("SHB-A.ST","Handelsbanken A"),
+    ("SAND.ST","Sandvik"),("ALFA.ST","Alfa Laval"),("EVO.ST","Evolution"),
+    ("SAAB-B.ST","Saab B"),("HM-B.ST","H&M B"),("TELIA.ST","Telia"),
+    ("HEXA-B.ST","Hexagon B"),("ESSITY-B.ST","Essity B"),("SKF-B.ST","SKF B"),
+    ("BOL.ST","Boliden"),("SCA-B.ST","SCA B"),("NIBE-B.ST","Nibe B"),
+    ("SINCH.ST","Sinch"),("ELUX-B.ST","Electrolux B"),("GETI-B.ST","Getinge B"),
+    ("TEL2-B.ST","Tele2 B"),("LIFCO-B.ST","Lifco B"),("INDU-C.ST","Industrivärden C"),
+    ("EQT.ST","EQT"),("LATO-B.ST","Latour B"),("SWEC-B.ST","Sweco B")
+]
+DENMARK = [
+    ("NOVO-B.CO","Novo Nordisk B"),("DSV.CO","DSV"),("MAERSK-B.CO","A.P. Møller-Mærsk B"),
+    ("DANSKE.CO","Danske Bank"),("VWS.CO","Vestas Wind Systems"),("ORSTED.CO","Ørsted"),
+    ("CARL-B.CO","Carlsberg B"),("COLO-B.CO","Coloplast B"),("PNDORA.CO","Pandora"),
+    ("NZYM-B.CO","Novonesis B"),("DEMANT.CO","Demant"),("GMAB.CO","Genmab"),
+    ("JYSK.CO","Jyske Bank"),("ROCK-B.CO","Rockwool B"),("TRYG.CO","Tryg"),
+    ("GN.CO","GN Store Nord"),("FLS.CO","FLSmidth"),("RBREW.CO","Royal Unibrew"),
+    ("AMBU-B.CO","Ambu B"),("ALK-B.CO","ALK-Abelló B")
+]
+FINLAND = [
+    ("NOKIA.HE","Nokia"),("KNEBV.HE","KONE B"),("SAMPO.HE","Sampo"),
+    ("NESTE.HE","Neste"),("FORTUM.HE","Fortum"),("UPM.HE","UPM-Kymmene"),
+    ("WRT1V.HE","Wärtsilä"),("STERV.HE","Stora Enso R"),("NDA-FI.HE","Nordea Bank"),
+    ("ELISA.HE","Elisa"),("KESKOB.HE","Kesko B"),("METSO.HE","Metso"),
+    ("ORNBV.HE","Orion B"),("KCR.HE","Konecranes"),("HUH1V.HE","Huhtamäki"),
+    ("VALMT.HE","Valmet"),("TIETO.HE","Tietoevry"),("OUT1V.HE","Outokumpu"),
+    ("KEMIRA.HE","Kemira"),("CTY1S.HE","Citycon")
+]
+USA = [
+    ("AAPL","Apple"),("MSFT","Microsoft"),("NVDA","NVIDIA"),("AMZN","Amazon"),
+    ("GOOGL","Alphabet A"),("META","Meta Platforms"),("BRK-B","Berkshire Hathaway B"),
+    ("AVGO","Broadcom"),("TSLA","Tesla"),("JPM","JPMorgan Chase"),("WMT","Walmart"),
+    ("LLY","Eli Lilly"),("V","Visa"),("MA","Mastercard"),("XOM","Exxon Mobil"),
+    ("COST","Costco"),("NFLX","Netflix"),("JNJ","Johnson & Johnson"),("ORCL","Oracle"),
+    ("HD","Home Depot"),("PG","Procter & Gamble"),("BAC","Bank of America"),
+    ("ABBV","AbbVie"),("KO","Coca-Cola"),("CRM","Salesforce"),("CVX","Chevron"),
+    ("AMD","AMD"),("CSCO","Cisco"),("IBM","IBM"),("GE","GE Aerospace"),
+    ("CAT","Caterpillar"),("MRK","Merck"),("MCD","McDonald's"),("DIS","Disney"),
+    ("PEP","PepsiCo"),("TMO","Thermo Fisher"),("AXP","American Express"),
+    ("GS","Goldman Sachs"),("RTX","RTX"),("QCOM","Qualcomm"),("INTU","Intuit"),
+    ("AMGN","Amgen"),("TXN","Texas Instruments"),("ISRG","Intuitive Surgical"),
+    ("BKNG","Booking Holdings"),("SPGI","S&P Global"),("BLK","BlackRock"),
+    ("PFE","Pfizer"),("LOW","Lowe's"),("UBER","Uber")
+]
+
+MARKETS = {
+    "🇳🇴 Oslo Børs": OSLO,
+    "🇸🇪 Stockholm": SWEDEN,
+    "🇩🇰 København": DENMARK,
+    "🇫🇮 Helsinki": FINLAND,
+    "🇺🇸 USA": USA,
+}
+
+selected_market = st.selectbox("🌍 Velg børs / marked", list(MARKETS.keys()), key="selected_market")
+TOP50 = MARKETS[selected_market]
 TOP50_TICKERS = [t for t, _ in TOP50]
 TOP50_LABELS = {t: f"{t} — {name}" for t, name in TOP50}
 MARKET_CAP_RANK = {t: i for i, (t, _) in enumerate(TOP50, start=1)}
+MARKET_NAME = selected_market.split(" ", 1)[1]
+N_STOCKS = len(TOP50)
 
 @st.cache_data(ttl=900, show_spinner=False)
 def get_history(ticker, period="2y"):
@@ -423,6 +482,29 @@ if "top50_results" not in st.session_state:
     st.session_state.top50_results = None
 if "top50_mode" not in st.session_state:
     st.session_state.top50_mode = None
+if "top50_market" not in st.session_state:
+    st.session_state.top50_market = None
+
+with st.expander("ℹ️ Slik beregnes scoren"):
+    st.markdown("""
+**Totalscore 0–100** kombinerer flere faktorer. Høy score betyr at aksjen kommer godt ut på flere kriterier samtidig – ikke at den har en bestemt sannsynlighet for kursoppgang.
+
+| Kriterium | Normal vekt | Hva vurderes |
+|---|---:|---|
+| 📈 Teknisk | 30 % | Kursutvikling, glidende snitt, momentum, RSI og MACD |
+| 💰 Verdsettelse | 25 % | P/E, Forward P/E, P/B og EV/EBITDA |
+| ⭐ Kvalitet og vekst | 20 % | ROE, driftsmargin, omsetningsvekst, resultatvekst og likviditet |
+| 🛡️ Risiko | 15 % | Volatilitet, maksimalt kursfall, beta og gjeld |
+| 💵 Utbytte | 10 % | Direkteavkastning; ekstremt høy yield får ikke automatisk toppscore |
+
+**👤 Innsidehandel:** Når brukbare strukturerte data finnes, blandes innside-score inn med **7 %** av den ellers beregnede totalscoren. Nylige identifiserbare kjøp teller positivt og sterkere enn salg teller negativt. Manglende innside-data gir ingen straff.
+
+**Tolkning:** 85–100 svært sterk · 75–84 sterk · 65–74 positiv · 55–64 nøytral/positiv · 45–54 nøytral · under 45 svak.
+
+30 dager, 90 dager og 1 år i resultattabellen er faktisk kursutvikling og ikke egne ekstra poengsummer.
+
+**Viktig:** Samme modell brukes på tvers av markedene. Banker, teknologi, energi, shipping og andre sektorer kan ha svært forskjellige normale nøkkeltall, så scoren bør brukes sammen med detaljanalysen.
+""")
 
 tab1, tab2, tab3 = st.tabs(["🔬 Enkeltanalyse", "🏆 Top 50", "📋 Tickerliste"])
 
@@ -558,7 +640,7 @@ with tab1:
                 st.caption("Dette er ikke et kursmål. Beregningen normaliserer bare dagens resultat mot P/E 18.")
 
 with tab2:
-    st.markdown("### Analyser 50 aksjer")
+    st.markdown(f"### Analyser {N_STOCKS} aksjer · {MARKET_NAME}")
     mode = st.radio(
         "Analysemodus",
         ["Full analyse", "Hurtigmodus"],
@@ -568,26 +650,29 @@ with tab2:
     min_score = st.slider("Vis bare score over", 0, 90, 0, step=5)
     sort_by = st.selectbox("Sorter etter", ["Score", "Innside-score", "Kurs", "30 dager %", "90 dager %", "1 år %", "Direkteavkastning %", "Utbytte-score", "Teknisk", "Fundamental", "Kvalitet", "Risiko"])
 
-    if st.button("Analyser Oslo Børs Top 50", type="primary", use_container_width=True):
+    if st.button(f"Analyser {MARKET_NAME} ({N_STOCKS} aksjer)", type="primary", use_container_width=True):
         results = []
         progress = st.progress(0)
         status = st.empty()
         full = mode == "Full analyse"
 
         for i, ticker40 in enumerate(TOP50_TICKERS):
-            status.write(f"Analyserer {TOP50_LABELS[ticker40]} ({i+1}/50)...")
+            status.write(f"Analyserer {TOP50_LABELS[ticker40]} ({i+1}/{N_STOCKS})...")
             r = analyze_ticker(ticker40, full=full)
             if r:
                 results.append(r)
-            progress.progress((i + 1) / 50)
+            progress.progress((i + 1) / N_STOCKS)
 
         status.empty()
         st.session_state.top50_results = results
         st.session_state.top50_mode = mode
+        st.session_state.top50_market = selected_market
 
     # Behold resultatene i session_state slik at valg av selskap,
     # lenker og andre widgets ikke nullstiller analysen ved Streamlit-rerun.
     results = st.session_state.top50_results
+    if st.session_state.top50_market != selected_market:
+        results = None
 
     if results is not None:
         if not results:
@@ -618,15 +703,16 @@ with tab2:
                 display[col] = pd.to_numeric(display[col], errors="coerce").round(1)
 
             mode_txt = st.session_state.top50_mode or mode
-            st.success(f"Analyserte {len(results)} av 50 aksjer · {mode_txt}.")
+            st.success(f"Analyserte {len(results)} av {N_STOCKS} aksjer · {MARKET_NAME} · {mode_txt}.")
 
             st.markdown("### Resultater")
             st.caption("👤 Innside-score og Innside 90d ligger nå først i tabellen. «Ingen sikre data» betyr at innside ikke påvirker totalscoren.")
             st.caption("Sveip sidelengs i tabellen for å se alle kolonnene.")
+            table_height = min(38 * (len(display) + 1) + 6, 1900)
             st.dataframe(
                 display,
                 use_container_width=True,
-                height=650,
+                height=table_height,
             )
 
             st.markdown("### Topp 10")
@@ -671,7 +757,7 @@ with tab2:
             st.download_button(
                 "Last ned Top 50-resultat som CSV",
                 data=csv,
-                file_name="oslo_bors_top50_analyse.csv",
+                file_name=f"{MARKET_NAME.lower().replace(' ', '_')}_analyse.csv",
                 mime="text/csv",
                 use_container_width=True,
             )
@@ -679,10 +765,11 @@ with tab2:
             if st.button("🗑️ Nullstill Top 50-analyse", use_container_width=True):
                 st.session_state.top50_results = None
                 st.session_state.top50_mode = None
+                st.session_state.top50_market = None
                 st.rerun()
 
 with tab3:
-    st.markdown("### Top 50 tickerliste")
+    st.markdown(f"### Tickerliste · {MARKET_NAME}")
     st.write("Trykk og hold på en ticker på iPhone for å kopiere den, eller velg den direkte i Enkeltanalyse.")
     ticker_df = pd.DataFrame([(i, t, n) for i, (t, n) in enumerate(TOP50, start=1)], columns=["Nr.", "Ticker", "Selskap"])
     st.dataframe(ticker_df, hide_index=True, use_container_width=True)
@@ -692,10 +779,10 @@ with tab3:
 
 st.markdown("---")
 st.caption(
-    "Top 50-listen er et øyeblikksbilde av de største Oslo Børs-selskapene etter markedsverdi, kontrollert 9. september 2026. Rangeringen endrer seg over tid. "
-    "Scoren er mekanisk og kan ikke forutsi fremtidig avkastning."
+    f"Aksjelisten for {MARKET_NAME} er en kuratert screeningliste og ikke en garantert sanntidsrangering etter markedsverdi. "
+    "Sammensetning og rangering kan endre seg. Scoren er mekanisk og kan ikke forutsi fremtidig avkastning."
 )
 st.markdown(
-    """<div style="text-align:center;margin-top:2.5rem;padding:1rem 0;font-size:0.8rem;opacity:0.65;border-top:1px solid rgba(128,128,128,0.25);">© GS, Skjetten 2026</div>""",
+    """<div style="text-align:center;margin-top:2.5rem;padding:1rem 0;font-size:0.8rem;opacity:0.65;border-top:1px solid rgba(128,128,128,0.25);">© GS, Skjetten 2026 · Smart Aksjeanalyse V6.2</div>""",
     unsafe_allow_html=True,
 )
