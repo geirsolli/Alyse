@@ -2,6 +2,10 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import yfinance as yf
+import urllib.request
+import urllib.parse
+import html as html_lib
+import re
 
 st.set_page_config(
     page_title="Smart Aksjeanalyse",
@@ -222,13 +226,124 @@ def fmt(v, suffix="", decimals=1):
         return "N/A"
 
 
-@st.cache_data(ttl=3600, show_spinner=False)
-def get_insider_data(ticker):
+def _html_text(raw):
+    raw = re.sub(r"(?is)<script.*?</script>|<style.*?</style>", " ", raw)
+    raw = re.sub(r"(?s)<[^>]+>", " ", raw)
+    return re.sub(r"\s+", " ", html_lib.unescape(raw)).strip()
+
+def _euronext_fetch(url):
+    req = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": "Mozilla/5.0 (compatible; SmartAksjeanalyse/6.4)",
+            "Accept-Language": "en,nb;q=0.8",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=8) as r:
+        return r.read().decode("utf-8", errors="ignore")
+
+@st.cache_data(ttl=21600, show_spinner=False)
+def get_euronext_insider_data(ticker):
+    """Best-effort lesing av offentlige Euronext-meldinger for Oslo.
+    Bare tydelige primærinnsider-meldinger tas med. Feil gir None og påvirker ikke score.
+    """
+    if not ticker.endswith(".OL"):
+        return None
+    symbol = ticker.replace(".OL", "")
     try:
-        tx = yf.Ticker(ticker).insider_transactions
-        return None if tx is None or len(tx) == 0 else tx.reset_index(drop=True)
+        search_url = (
+            "https://live.euronext.com/en/markets/oslo/equities/company-news-archive"
+            "?combine=" + urllib.parse.quote(symbol)
+        )
+        raw = _euronext_fetch(search_url)
+
+        # Finn detaljlenker til selskapsmeldinger på resultatsiden.
+        links = re.findall(
+            r'href=["\']([^"\']*/(?:en|nb)/products/equities/company-news/[^"\']+)["\']',
+            raw, flags=re.I
+        )
+        if not links:
+            links = re.findall(
+                r'href=["\']([^"\']*/(?:en|nb)/products/equities/company-news/20[^"\']+)["\']',
+                raw, flags=re.I
+            )
+        # Unike lenker, maks 12 for å holde analysen rask.
+        unique=[]
+        for u in links:
+            u=html_lib.unescape(u)
+            if u not in unique:
+                unique.append(u)
+        rows=[]
+        for u in unique[:12]:
+            if u.startswith("/"):
+                u="https://live.euronext.com"+u
+            try:
+                detail=_euronext_fetch(u)
+                txt=_html_text(detail)
+                low=txt.lower()
+                if not any(k in low for k in [
+                    "mandatory notification of trade",
+                    "primary insider",
+                    "meldepliktig handel",
+                    "primærinnsider",
+                ]):
+                    continue
+                # Verifiser symbol når Euronext-siden oppgir det.
+                sm=re.search(r"\bSymbol\s+([A-Z0-9.-]+)", txt, flags=re.I)
+                if sm and sm.group(1).upper() != symbol.upper():
+                    continue
+                # Ikke la tildelinger/opsjoner mv. bli tolket som ordinære kjøp.
+                excluded=["option","award","grant","gift","restricted","rsu","exercise",
+                          "conversion","vesting","borrowed","redelivery","share buy-back",
+                          "buyback program","tilbakekjøp av egne"]
+                if any(k in low for k in excluded):
+                    continue
+                action=None
+                if any(k in low for k in [" has purchased "," purchased "," has bought "," acquired ",
+                                          " kjøpt "," har kjøpt "," ervervet "]):
+                    action="purchase"
+                elif any(k in low for k in [" has sold "," sold "," disposed ",
+                                            " solgt "," har solgt "," avhendet "]):
+                    action="sale"
+                if not action:
+                    continue
+                dm=re.search(r"\b(\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+20\d{2})\b",
+                             txt, flags=re.I)
+                dt=pd.to_datetime(dm.group(1), errors="coerce") if dm else pd.NaT
+                if pd.isna(dt):
+                    continue
+                rows.append({
+                    "Date": pd.Timestamp(dt),
+                    "Transaction": action,
+                    "Text": txt[:3000],
+                    "Source": "Euronext Oslo Børs",
+                    "URL": u,
+                })
+            except Exception:
+                continue
+        return pd.DataFrame(rows) if rows else None
     except Exception:
         return None
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def get_yahoo_insider_data(ticker):
+    try:
+        tx = yf.Ticker(ticker).insider_transactions
+        if tx is None or len(tx) == 0:
+            return None
+        tx=tx.reset_index(drop=True).copy()
+        tx["Source"]="Yahoo/yfinance"
+        return tx
+    except Exception:
+        return None
+
+def get_insider_data(ticker):
+    # Oslo: Euronext er primærkilde. Yahoo brukes som reserve.
+    if ticker.endswith(".OL"):
+        eu=get_euronext_insider_data(ticker)
+        if eu is not None and len(eu):
+            return eu
+    return get_yahoo_insider_data(ticker)
 
 def score_insider_activity(tx):
     if tx is None or len(tx) == 0:
@@ -246,8 +361,9 @@ def score_insider_activity(tx):
         days=max(0,(now.normalize()-dt.normalize()).days)
         if days>365: continue
         latest=dt if latest is None or dt>latest else latest
-        buy=any(k in txt for k in ["purchase","buy","bought","acquisition"])
-        sell=any(k in txt for k in ["sale","sell","sold","disposition"])
+        action = str(row.get("Transaction", "")).lower() if hasattr(row, "get") else ""
+        buy = action == "purchase" or any(k in txt for k in ["purchase","buy","bought","acquisition"])
+        sell = action == "sale" or any(k in txt for k in ["sale","sell","sold","disposition"])
         if not (buy or sell): continue
         rec=1.0 if days<=30 else 0.75 if days<=90 else 0.45 if days<=180 else 0.20
         if buy:
@@ -307,6 +423,12 @@ def analyze_ticker(ticker, full=True):
 
     info = get_info(ticker) if full else {}
     insider_tx = get_insider_data(ticker) if full else None
+    insider_source = "Ingen sikre data"
+    if insider_tx is not None and len(insider_tx):
+        if "Source" in insider_tx.columns and insider_tx["Source"].notna().any():
+            insider_source = str(insider_tx["Source"].dropna().iloc[0])
+        else:
+            insider_source = "Yahoo/yfinance"
     insider_score, insider_buys90, insider_sells90, insider_latest = score_insider_activity(insider_tx)
     name = info.get("shortName") or info.get("longName") or dict(TOP50).get(ticker, ticker)
     currency = info.get("currency") or "NOK"
@@ -458,7 +580,7 @@ def analyze_ticker(ticker, full=True):
         "Score": total,
         "Innside-score": insider_score,
         "Innside 90d": f"+{insider_buys90}/-{insider_sells90}" if insider_score is not None else "Ingen sikre data",
-        "Innside-kilde": "Yahoo/yfinance" if insider_score is not None else "Euronext-kontroll",
+        "Innside-kilde": insider_source if insider_score is not None else "Ingen sikre data",
         "Siste innsidehandel": insider_latest.strftime("%d.%m.%Y") if insider_latest is not None else "–",
         "Teknisk": tech, "Fundamental": fundamental, "Risiko": risk, "Kvalitet": quality,
         "30 dager %": ret_30d, "90 dager %": ret_90d, "1 år %": ret_1y,
@@ -564,7 +686,7 @@ with tab1:
             st.markdown("### 👤 Innsidehandel")
             if r["Innside-score"] is None:
                 st.warning(
-                    "Ingen sikre automatiske innside-data funnet. Dette betyr ikke nødvendigvis at det ikke finnes "
+                    "Ingen sikre automatiske innsidehandler funnet. Dette betyr ikke nødvendigvis at det ikke finnes "
                     "primærinnsidehandler. Kontroller Euronext/Oslo Børs. Manglende data påvirker ikke totalscoren."
                 )
                 i1, i2 = st.columns(2)
@@ -575,7 +697,7 @@ with tab1:
                 i1.metric("Innside-score", f'{r["Innside-score"]:.0f}/100')
                 i2.metric("Kjøp/salg 90d", r["Innside 90d"])
                 i3.metric("Siste handel", r["Siste innsidehandel"])
-                st.caption("Automatisk strukturert kilde: Yahoo/yfinance. Innside teller 7 % når sikre data finnes.")
+                st.caption("Kilde vises i resultatet. For Oslo forsøkes Euronext Oslo Børs først; Yahoo/yfinance brukes som reserve. Innside teller 7 % når sikre data finnes.")
             st.link_button(
                 "🏛️ Kontroller primærinnsidehandel hos Euronext",
                 "https://live.euronext.com/nb/markets/oslo/equities/company-news",
@@ -692,10 +814,11 @@ with tab2:
             df.index = df.index + 1
 
             show_cols = [
-                "Markedsverdi-rang", "Ticker", "Selskap", "Innside-score", "Innside 90d", "Innside-kilde",
+                "Vurdering", "Score", "Markedsverdi-rang", "Ticker", "Selskap",
                 "Kurs", "Siste kursdato", "30 dager %", "90 dager %", "1 år %",
-                "Score", "Vurdering", "Teknisk", "Fundamental", "Kvalitet", "Risiko", "Utbytte-score",
-                "Volatilitet %", "Direkteavkastning %", "P/E", "ROE %"
+                "Teknisk", "Fundamental", "Kvalitet", "Risiko", "Utbytte-score",
+                "Volatilitet %", "Direkteavkastning %", "P/E", "ROE %",
+                "Innside-score", "Innside 90d", "Innside-kilde"
             ]
             display = df[show_cols].copy()
             for col in ["Kurs", "30 dager %", "90 dager %", "1 år %", "Score", "Innside-score", "Teknisk", "Fundamental",
@@ -706,7 +829,7 @@ with tab2:
             st.success(f"Analyserte {len(results)} av {N_STOCKS} aksjer · {MARKET_NAME} · {mode_txt}.")
 
             st.markdown("### Resultater")
-            st.caption("👤 Innside-score og Innside 90d ligger nå først i tabellen. «Ingen sikre data» betyr at innside ikke påvirker totalscoren.")
+            st.caption("Vurdering og Score står først. Innsidekolonnene ligger helt til slutt. «Ingen sikre data» betyr at innside ikke påvirker totalscoren.")
             st.caption("Sveip sidelengs i tabellen for å se alle kolonnene.")
             table_height = min(38 * (len(display) + 1) + 6, 1900)
             st.dataframe(
@@ -783,6 +906,6 @@ st.caption(
     "Sammensetning og rangering kan endre seg. Scoren er mekanisk og kan ikke forutsi fremtidig avkastning."
 )
 st.markdown(
-    """<div style="text-align:center;margin-top:2.5rem;padding:1rem 0;font-size:0.8rem;opacity:0.65;border-top:1px solid rgba(128,128,128,0.25);">© GS, Skjetten 2026 · Smart Aksjeanalyse V6.2</div>""",
+    """<div style="text-align:center;margin-top:2.5rem;padding:1rem 0;font-size:0.8rem;opacity:0.65;border-top:1px solid rgba(128,128,128,0.25);">© GS, Skjetten 2026 · Smart Aksjeanalyse V6.4</div>""",
     unsafe_allow_html=True,
 )
