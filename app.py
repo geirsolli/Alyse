@@ -422,14 +422,10 @@ def analyze_ticker(ticker, full=True):
     from_high = (current / high_52 - 1) * 100
 
     info = get_info(ticker) if full else {}
-    insider_tx = get_insider_data(ticker) if full else None
-    insider_source = "Ingen sikre data"
-    if insider_tx is not None and len(insider_tx):
-        if "Source" in insider_tx.columns and insider_tx["Source"].notna().any():
-            insider_source = str(insider_tx["Source"].dropna().iloc[0])
-        else:
-            insider_source = "Yahoo/yfinance"
-    insider_score, insider_buys90, insider_sells90, insider_latest = score_insider_activity(insider_tx)
+    # Innsideanalyse er midlertidig deaktivert i V6.5.
+    insider_tx = None
+    insider_source = None
+    insider_score, insider_buys90, insider_sells90, insider_latest = None, 0, 0, None
     name = info.get("shortName") or info.get("longName") or dict(TOP50).get(ticker, ticker)
     currency = info.get("currency") or "NOK"
     website = info.get("website")
@@ -619,7 +615,6 @@ with st.expander("ℹ️ Slik beregnes scoren"):
 | 🛡️ Risiko | 15 % | Volatilitet, maksimalt kursfall, beta og gjeld |
 | 💵 Utbytte | 10 % | Direkteavkastning; ekstremt høy yield får ikke automatisk toppscore |
 
-**👤 Innsidehandel:** Når brukbare strukturerte data finnes, blandes innside-score inn med **7 %** av den ellers beregnede totalscoren. Nylige identifiserbare kjøp teller positivt og sterkere enn salg teller negativt. Manglende innside-data gir ingen straff.
 
 **Tolkning:** 85–100 svært sterk · 75–84 sterk · 65–74 positiv · 55–64 nøytral/positiv · 45–54 nøytral · under 45 svak.
 
@@ -814,11 +809,11 @@ with tab2:
             df.index = df.index + 1
 
             show_cols = [
-                "Vurdering", "Score", "Markedsverdi-rang", "Ticker", "Selskap",
-                "Kurs", "Siste kursdato", "30 dager %", "90 dager %", "1 år %",
+                "Vurdering", "Score", "Ticker", "Selskap", "Kurs",
+                "30 dager %", "90 dager %", "1 år %",
                 "Teknisk", "Fundamental", "Kvalitet", "Risiko", "Utbytte-score",
-                "Volatilitet %", "Direkteavkastning %", "P/E", "ROE %",
-                "Innside-score", "Innside 90d", "Innside-kilde"
+                "Direkteavkastning %", "P/E", "ROE %", "Volatilitet %",
+                "Siste kursdato", "Markedsverdi-rang"
             ]
             display = df[show_cols].copy()
             for col in ["Kurs", "30 dager %", "90 dager %", "1 år %", "Score", "Innside-score", "Teknisk", "Fundamental",
@@ -829,67 +824,50 @@ with tab2:
             st.success(f"Analyserte {len(results)} av {N_STOCKS} aksjer · {MARKET_NAME} · {mode_txt}.")
 
             st.markdown("### Resultater")
-            st.caption("Vurdering og Score står først. Innsidekolonnene ligger helt til slutt. «Ingen sikre data» betyr at innside ikke påvirker totalscoren.")
+            st.caption("De viktigste kolonnene står først. Sveip sidelengs på mobil eller bruk rullefeltet nederst på PC for flere nøkkeltall.")
             st.caption("Sveip sidelengs i tabellen for å se alle kolonnene.")
-            table_height = min(38 * (len(display) + 1) + 6, 1900)
             st.dataframe(
                 display,
                 use_container_width=True,
-                height=table_height,
+                height=720,
+                hide_index=True,
+                column_config={
+                    "Vurdering": st.column_config.TextColumn("Vurdering", width="medium"),
+                    "Score": st.column_config.NumberColumn("Score", format="%.0f"),
+                    "Ticker": st.column_config.TextColumn("Ticker", width="small"),
+                    "Selskap": st.column_config.TextColumn("Selskap", width="medium"),
+                    "Kurs": st.column_config.NumberColumn("Kurs", format="%.2f"),
+                    "30 dager %": st.column_config.NumberColumn("30d %", format="%.1f%%"),
+                    "90 dager %": st.column_config.NumberColumn("90d %", format="%.1f%%"),
+                    "1 år %": st.column_config.NumberColumn("1 år %", format="%.1f%%"),
+                    "Teknisk": st.column_config.NumberColumn("Teknisk", format="%.0f"),
+                    "Fundamental": st.column_config.NumberColumn("Fund.", format="%.0f"),
+                    "Kvalitet": st.column_config.NumberColumn("Kvalitet", format="%.0f"),
+                    "Risiko": st.column_config.NumberColumn("Risiko", format="%.0f"),
+                    "Utbytte-score": st.column_config.NumberColumn("Utbytte", format="%.0f"),
+                    "Direkteavkastning %": st.column_config.NumberColumn("Yield %", format="%.1f%%"),
+                    "P/E": st.column_config.NumberColumn("P/E", format="%.1f"),
+                    "ROE %": st.column_config.NumberColumn("ROE %", format="%.1f%%"),
+                    "Volatilitet %": st.column_config.NumberColumn("Vol. %", format="%.1f%%"),
+                    "Markedsverdi-rang": st.column_config.NumberColumn("Rang", format="%d"),
+                },
             )
 
             st.markdown("### Topp 10")
-            for rank, (_, row) in enumerate(df.head(10).iterrows(), start=1):
-                div_txt = fmt(row["Direkteavkastning %"], "%")
-                st.write(
-                    f"**{rank}. {row['Ticker']} — {row['Score']:.0f}/100** · {row['Selskap']} · "
-                    f"Kurs {row['Kurs']:.2f} · 30d {fmt(row['30 dager %'], '%')} · "
-                    f"90d {fmt(row['90 dager %'], '%')} · 1 år {fmt(row['1 år %'], '%')} · Utbytte {div_txt}"
-                )
-
-            st.markdown("### Send ticker til enkeltanalyse")
-            if len(df):
-                pick = st.selectbox(
-                    "Velg en aksje fra resultatlisten",
-                    df["Ticker"].tolist(),
-                    format_func=lambda x: f"{x} — {df.loc[df['Ticker'] == x, 'Selskap'].iloc[0]}",
-                    key="result_pick",
-                )
-
-                picked_row = df.loc[df["Ticker"] == pick].iloc[0]
-                st.caption(f"Siste tilgjengelige kursdato: {picked_row['Siste kursdato']}")
-
-                link_cols2 = st.columns(2)
-                if pd.notna(picked_row.get("Nettside")) and picked_row.get("Nettside"):
-                    link_cols2[0].link_button(
-                        "🌐 Selskapets nettside",
-                        picked_row["Nettside"],
-                        use_container_width=True
-                    )
-                link_cols2[1].link_button(
-                    "📈 Yahoo Finance",
-                    picked_row["Yahoo URL"],
-                    use_container_width=True
-                )
-
-                if st.button("Bruk denne i enkeltanalyse", use_container_width=True):
-                    st.session_state.selected_ticker = pick
-                    st.success(f"{pick} er valgt. Åpne fanen Enkeltanalyse.")
-
-            csv = display.to_csv(index=True).encode("utf-8")
-            st.download_button(
-                "Last ned Top 50-resultat som CSV",
-                data=csv,
-                file_name=f"{MARKET_NAME.lower().replace(' ', '_')}_analyse.csv",
-                mime="text/csv",
-                use_container_width=True,
-            )
-
-            if st.button("🗑️ Nullstill Top 50-analyse", use_container_width=True):
-                st.session_state.top50_results = None
-                st.session_state.top50_mode = None
-                st.session_state.top50_market = None
-                st.rerun()
+        top10 = filtered.head(10)[["Ticker", "Selskap", "Score", "Vurdering", "Kurs", "30 dager %", "90 dager %", "1 år %"]].copy()
+        st.dataframe(
+            top10,
+            use_container_width=True,
+            hide_index=True,
+            height=390,
+            column_config={
+                "Score": st.column_config.NumberColumn("Score", format="%.0f"),
+                "Kurs": st.column_config.NumberColumn("Kurs", format="%.2f"),
+                "30 dager %": st.column_config.NumberColumn("30d %", format="%.1f%%"),
+                "90 dager %": st.column_config.NumberColumn("90d %", format="%.1f%%"),
+                "1 år %": st.column_config.NumberColumn("1 år %", format="%.1f%%"),
+            },
+        )
 
 with tab3:
     st.markdown(f"### Tickerliste · {MARKET_NAME}")
@@ -906,6 +884,6 @@ st.caption(
     "Sammensetning og rangering kan endre seg. Scoren er mekanisk og kan ikke forutsi fremtidig avkastning."
 )
 st.markdown(
-    """<div style="text-align:center;margin-top:2.5rem;padding:1rem 0;font-size:0.8rem;opacity:0.65;border-top:1px solid rgba(128,128,128,0.25);">© GS, Skjetten 2026 · Smart Aksjeanalyse V6.4</div>""",
+    """<div style="text-align:center;margin-top:2.5rem;padding:1rem 0;font-size:0.8rem;opacity:0.65;border-top:1px solid rgba(128,128,128,0.25);">© GS, Skjetten 2026 · Smart Aksjeanalyse V6.5</div>""",
     unsafe_allow_html=True,
 )
