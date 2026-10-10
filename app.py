@@ -773,11 +773,24 @@ def render_full_analysis(r, chart_key="single_analysis_chart_period"):
     period_code = {"1 år": "1y", "2 år": "2y", "3 år": "3y", "5 år": "5y"}[chart_period]
     history_chart = get_history(r["Ticker"], period=period_code)
     if history_chart is not None and not history_chart.empty and "Close" in history_chart.columns:
+        import altair as alt
         chart = history_chart[["Close"]].dropna().copy()
         chart.index = pd.to_datetime(chart.index)
-        chart.index.name = "Dato"
-        chart = chart.rename(columns={"Close": "Kurs"})
-        st.line_chart(chart, use_container_width=True, x_label="Dato", y_label=f"Kurs ({r['Valuta']})")
+        chart = chart.reset_index()
+        chart = chart.rename(columns={chart.columns[0]: "Dato", "Close": "Kurs"})
+        chart["Dato"] = pd.to_datetime(chart["Dato"]).dt.tz_localize(None)
+        # Altair formats calendar dates consistently, independent of English weekday ticks.
+        price_line = (
+            alt.Chart(chart)
+            .mark_line(color="#2375D8", strokeWidth=2)
+            .encode(
+                x=alt.X("Dato:T", title="Dato", axis=alt.Axis(format="%d.%m.%Y", labelAngle=-35, tickCount=7)),
+                y=alt.Y("Kurs:Q", title=f"Kurs ({r['Valuta']})", scale=alt.Scale(zero=False)),
+                tooltip=[alt.Tooltip("Dato:T", title="Dato", format="%d.%m.%Y"), alt.Tooltip("Kurs:Q", title="Kurs", format=".2f")],
+            )
+            .interactive(bind_y=False)
+        )
+        st.altair_chart(price_line, use_container_width=True)
         st.caption("Historisk sluttkurs uten utbyttejustering. Kilde: Yahoo Finance. Kursdata kan være forsinket.")
     else:
         st.warning("Fant ingen kurshistorikk for valgt periode.")
@@ -1046,6 +1059,6 @@ st.caption(
     "Sammensetning og rangering kan endre seg. Scoren er mekanisk og kan ikke forutsi fremtidig avkastning."
 )
 st.markdown(
-    """<div style="text-align:center;margin-top:2.5rem;padding:1rem 0;font-size:0.8rem;opacity:0.65;border-top:1px solid rgba(128,128,128,0.25);">© GS, Skjetten 2026 · Smart Aksjeanalyse V7.11</div>""",
+    """<div style="text-align:center;margin-top:2.5rem;padding:1rem 0;font-size:0.8rem;opacity:0.65;border-top:1px solid rgba(128,128,128,0.25);">© GS, Skjetten 2026 · Smart Aksjeanalyse V7.12</div>""",
     unsafe_allow_html=True,
 )
