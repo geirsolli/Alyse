@@ -741,6 +741,104 @@ with st.expander("ℹ️ Slik beregnes scoren"):
 **Viktig:** Samme modell brukes på tvers av markedene. Banker, teknologi, energi, shipping og andre sektorer kan ha svært forskjellige normale nøkkeltall, så scoren bør brukes sammen med detaljanalysen.
 """)
 
+def render_full_analysis(r, chart_key=chart_key):
+    st.subheader(f"{r['Selskap']} ({r['Ticker']})")
+    a, b = st.columns(2)
+    a.metric("Kurs", f"{r['Kurs']:.2f} {r['Valuta']}")
+    b.metric("Total score", f"{r['Score']:.0f}/100")
+    st.caption(
+        f"Siste tilgjengelige kurs: **{r.get('Siste kurstid full', r['Siste kursdato'])}** · "
+        f"Kursalder: **{r.get('Kursalder', 'Ukjent')}** · Kilde: Yahoo Finance / yfinance. "
+        "Data kan være forsinket."
+    )
+    c, d = st.columns(2)
+    c.metric("30 dager", fmt(r["30 dager %"], "%"))
+    d.metric("90 dager", fmt(r["90 dager %"], "%"))
+    e, f = st.columns(2)
+    e.metric("1 år", fmt(r["1 år %"], "%"))
+    f.metric("RSI", fmt(r["RSI14"]))
+    st.caption(
+        f"Trend: 30d **{r['Trend 30d']}** · 90d **{r['Trend 90d']}** · 1 år **{r['Trend 1 år']}**"
+    )
+    st.progress(min(max(r["Score"] / 100, 0), 1))
+
+    st.markdown("### Delscorer")
+    st.dataframe(pd.DataFrame({
+        "Område": ["Teknisk", "Fundamental", "Kvalitet", "Risiko", "Utbytte"],
+        "Score": [r["Teknisk"], r["Fundamental"], r["Kvalitet"], r["Risiko"], r["Utbytte-score"]],
+    }), hide_index=True, use_container_width=True)
+
+    st.markdown("### 📈 Historisk aksjekurs")
+    chart_period = st.radio("Velg periode", ["1 år", "2 år", "3 år", "5 år"], horizontal=True, key=chart_key)
+    period_code = {"1 år": "1y", "2 år": "2y", "3 år": "3y", "5 år": "5y"}[chart_period]
+    history_chart = get_history(r["Ticker"], period=period_code)
+    if history_chart is not None and not history_chart.empty and "Close" in history_chart.columns:
+        chart = history_chart[["Close"]].dropna().copy()
+        chart.index = pd.to_datetime(chart.index)
+        chart.index.name = "Dato"
+        chart = chart.rename(columns={"Close": "Kurs"})
+        st.line_chart(chart, use_container_width=True, x_label="Dato", y_label=f"Kurs ({r['Valuta']})")
+        st.caption("Historisk sluttkurs uten utbyttejustering. Kilde: Yahoo Finance. Kursdata kan være forsinket.")
+    else:
+        st.warning("Fant ingen kurshistorikk for valgt periode.")
+
+    st.markdown("### Om selskapet")
+    info_rows = []
+    if r.get("Sektor"):
+        info_rows.append(["Sektor", r["Sektor"]])
+    if r.get("Bransje"):
+        info_rows.append(["Bransje", r["Bransje"]])
+    if info_rows:
+        st.dataframe(
+            pd.DataFrame(info_rows, columns=["Felt", "Info"]),
+            hide_index=True,
+            use_container_width=True
+        )
+
+    link_cols = st.columns(2)
+    if r.get("Nettside"):
+        link_cols[0].link_button("🌐 Selskapets nettside", r["Nettside"], use_container_width=True)
+    link_cols[1].link_button("📈 Yahoo Finance", r["Yahoo URL"], use_container_width=True)
+
+    if r.get("Beskrivelse"):
+        with st.expander("Les mer om selskapet"):
+            st.write(r["Beskrivelse"])
+
+    st.markdown("### Teknisk")
+    st.dataframe(pd.DataFrame([
+        ["30 dager", fmt(r["30 dager %"], "%")],
+        ["90 dager", fmt(r["90 dager %"], "%")],
+        ["1 år", fmt(r["1 år %"], "%")],
+        ["3 mnd (ca. 63 børsdager)", fmt(r["3 mnd %"], "%")],
+        ["6 mnd", fmt(r["6 mnd %"], "%")],
+        ["RSI14", fmt(r["RSI14"])],
+        ["MACD", fmt(r["MACD"], decimals=3)],
+        ["Volatilitet", fmt(r["Volatilitet %"], "%")],
+        ["Sharpe", fmt(r["Sharpe"])],
+        ["Maks drawdown", fmt(r["Maks drawdown %"], "%")],
+    ], columns=["Måltall", "Verdi"]), hide_index=True, use_container_width=True)
+
+    st.markdown("### Fundamental")
+    st.dataframe(pd.DataFrame([
+        ["P/E", fmt(r["P/E"])],
+        ["Forward P/E", fmt(r["Forward P/E"])],
+        ["P/B", fmt(r["P/B"])],
+        ["EV/EBITDA", fmt(r["EV/EBITDA"])],
+        ["ROE", fmt(r["ROE %"], "%")],
+        ["Resultatmargin", fmt(r["Profit margin %"], "%")],
+        ["Omsetningsvekst", fmt(r["Revenue growth %"], "%")],
+        ["Resultatvekst", fmt(r["Earnings growth %"], "%")],
+        ["Gjeld/Egenkapital", fmt(r["Debt/Equity"])],
+        ["Beta", fmt(r["Beta"])],
+        ["Direkteavkastning", fmt(r["Dividend yield %"], "%")],
+    ], columns=["Måltall", "Verdi"]), hide_index=True, use_container_width=True)
+
+    if r["Fair value proxy"] is not None:
+        diff = (r["Fair value proxy"] / r["Kurs"] - 1) * 100
+        st.markdown("### Enkel verdiindikasjon")
+        st.write(f"Normalisert P/E-proxy: **{r['Fair value proxy']:.2f} {r['Valuta']}** ({diff:+.1f}% mot dagens kurs).")
+        st.caption("Dette er ikke et kursmål. Beregningen normaliserer bare dagens resultat mot P/E 18.")
+
 tab1, tab2, tab3 = st.tabs(["🔬 Enkeltanalyse", "🏆 Top 100", "📋 Tickerliste"])
 
 with tab1:
@@ -772,102 +870,7 @@ with tab1:
     if r is None:
         st.info("Velg en aksje og trykk «Kjør avansert analyse» for å vise kursgraf og nøkkeltall.")
     else:
-        st.subheader(f"{r['Selskap']} ({r['Ticker']})")
-        a, b = st.columns(2)
-        a.metric("Kurs", f"{r['Kurs']:.2f} {r['Valuta']}")
-        b.metric("Total score", f"{r['Score']:.0f}/100")
-        st.caption(
-            f"Siste tilgjengelige kurs: **{r.get('Siste kurstid full', r['Siste kursdato'])}** · "
-            f"Kursalder: **{r.get('Kursalder', 'Ukjent')}** · Kilde: Yahoo Finance / yfinance. "
-            "Data kan være forsinket."
-        )
-        c, d = st.columns(2)
-        c.metric("30 dager", fmt(r["30 dager %"], "%"))
-        d.metric("90 dager", fmt(r["90 dager %"], "%"))
-        e, f = st.columns(2)
-        e.metric("1 år", fmt(r["1 år %"], "%"))
-        f.metric("RSI", fmt(r["RSI14"]))
-        st.caption(
-            f"Trend: 30d **{r['Trend 30d']}** · 90d **{r['Trend 90d']}** · 1 år **{r['Trend 1 år']}**"
-        )
-        st.progress(min(max(r["Score"] / 100, 0), 1))
-
-        st.markdown("### Delscorer")
-        st.dataframe(pd.DataFrame({
-            "Område": ["Teknisk", "Fundamental", "Kvalitet", "Risiko", "Utbytte"],
-            "Score": [r["Teknisk"], r["Fundamental"], r["Kvalitet"], r["Risiko"], r["Utbytte-score"]],
-        }), hide_index=True, use_container_width=True)
-
-        st.markdown("### 📈 Historisk aksjekurs")
-        chart_period = st.radio("Velg periode", ["1 år", "2 år", "5 år"], horizontal=True, key="single_chart_period")
-        period_code = {"1 år": "1y", "2 år": "2y", "5 år": "5y"}[chart_period]
-        history_chart = get_history(r["Ticker"], period=period_code)
-        if history_chart is not None and not history_chart.empty and "Close" in history_chart.columns:
-            chart = history_chart[["Close"]].dropna().copy()
-            chart.index = pd.to_datetime(chart.index)
-            chart.index.name = "Dato"
-            chart = chart.rename(columns={"Close": "Kurs"})
-            st.line_chart(chart, use_container_width=True, x_label="Dato", y_label=f"Kurs ({r['Valuta']})")
-            st.caption("Historisk sluttkurs uten utbyttejustering. Kilde: Yahoo Finance. Kursdata kan være forsinket.")
-        else:
-            st.warning("Fant ingen kurshistorikk for valgt periode.")
-
-        st.markdown("### Om selskapet")
-        info_rows = []
-        if r.get("Sektor"):
-            info_rows.append(["Sektor", r["Sektor"]])
-        if r.get("Bransje"):
-            info_rows.append(["Bransje", r["Bransje"]])
-        if info_rows:
-            st.dataframe(
-                pd.DataFrame(info_rows, columns=["Felt", "Info"]),
-                hide_index=True,
-                use_container_width=True
-            )
-
-        link_cols = st.columns(2)
-        if r.get("Nettside"):
-            link_cols[0].link_button("🌐 Selskapets nettside", r["Nettside"], use_container_width=True)
-        link_cols[1].link_button("📈 Yahoo Finance", r["Yahoo URL"], use_container_width=True)
-
-        if r.get("Beskrivelse"):
-            with st.expander("Les mer om selskapet"):
-                st.write(r["Beskrivelse"])
-
-        st.markdown("### Teknisk")
-        st.dataframe(pd.DataFrame([
-            ["30 dager", fmt(r["30 dager %"], "%")],
-            ["90 dager", fmt(r["90 dager %"], "%")],
-            ["1 år", fmt(r["1 år %"], "%")],
-            ["3 mnd (ca. 63 børsdager)", fmt(r["3 mnd %"], "%")],
-            ["6 mnd", fmt(r["6 mnd %"], "%")],
-            ["RSI14", fmt(r["RSI14"])],
-            ["MACD", fmt(r["MACD"], decimals=3)],
-            ["Volatilitet", fmt(r["Volatilitet %"], "%")],
-            ["Sharpe", fmt(r["Sharpe"])],
-            ["Maks drawdown", fmt(r["Maks drawdown %"], "%")],
-        ], columns=["Måltall", "Verdi"]), hide_index=True, use_container_width=True)
-
-        st.markdown("### Fundamental")
-        st.dataframe(pd.DataFrame([
-            ["P/E", fmt(r["P/E"])],
-            ["Forward P/E", fmt(r["Forward P/E"])],
-            ["P/B", fmt(r["P/B"])],
-            ["EV/EBITDA", fmt(r["EV/EBITDA"])],
-            ["ROE", fmt(r["ROE %"], "%")],
-            ["Resultatmargin", fmt(r["Profit margin %"], "%")],
-            ["Omsetningsvekst", fmt(r["Revenue growth %"], "%")],
-            ["Resultatvekst", fmt(r["Earnings growth %"], "%")],
-            ["Gjeld/Egenkapital", fmt(r["Debt/Equity"])],
-            ["Beta", fmt(r["Beta"])],
-            ["Direkteavkastning", fmt(r["Dividend yield %"], "%")],
-        ], columns=["Måltall", "Verdi"]), hide_index=True, use_container_width=True)
-
-        if r["Fair value proxy"] is not None:
-            diff = (r["Fair value proxy"] / r["Kurs"] - 1) * 100
-            st.markdown("### Enkel verdiindikasjon")
-            st.write(f"Normalisert P/E-proxy: **{r['Fair value proxy']:.2f} {r['Valuta']}** ({diff:+.1f}% mot dagens kurs).")
-            st.caption("Dette er ikke et kursmål. Beregningen normaliserer bare dagens resultat mot P/E 18.")
+        render_full_analysis(r)
 
 with tab2:
     st.markdown(f"### Analyser {N_STOCKS} aksjer · {MARKET_NAME}")
@@ -937,7 +940,7 @@ with tab2:
             show_cols = [
                 "Vurdering", "Score", "Ticker", "Selskap", "Kurs", "Siste kurstid",
                 "30 dager %", "90 dager %", "1 år %",
-                "Teknisk", "Fundamental", "Kvalitet", "Risiko"
+                "Teknisk", "Fundamental", "Kvalitet", "Risiko", "Direkteavkastning %"
             ]
             display = df[show_cols].copy()
             for col in ["Kurs", "30 dager %", "90 dager %", "1 år %", "Score", "Teknisk", "Fundamental",
@@ -951,7 +954,7 @@ with tab2:
             st.markdown("### Resultater")
             if company_search:
                 st.caption(f"Søket «{company_search}» ga {len(df)} treff i analyserte aksjer.")
-            st.caption("Hovedtabellen viser alle 13 kolonnene med kompakte overskrifter. Klikk på en rad i tabellen for å vise kursgraf og detaljer under.")
+            st.caption("Hovedtabellen viser alle 14 kolonnene med kompakte overskrifter. Klikk på en rad i tabellen for å vise kursgraf og detaljer under.")
             st.caption("Sist kurs viser dato og klokkeslett (dag.måned time:minutt). Full dato og delscorer vises under tabellen.")
             table_event = st.dataframe(
                 display,
@@ -974,7 +977,8 @@ with tab2:
                     "Teknisk": st.column_config.NumberColumn("Tekn.", format="%.0f", width=58),
                     "Fundamental": st.column_config.NumberColumn("Fund.", format="%.0f", width=58),
                     "Kvalitet": st.column_config.NumberColumn("Kval.", format="%.0f", width=58),
-                    "Risiko": st.column_config.NumberColumn("Ris.", format="%.0f", width=58),
+                    "Risiko": st.column_config.NumberColumn("Risiko-score", format="%.0f", width=90),
+                    "Direkteavkastning %": st.column_config.NumberColumn("Utbytte %", format="%.1f%%", width=77),
                 },
             )
 
@@ -997,82 +1001,19 @@ with tab2:
                 key="top50_detail_ticker",
             )
             st.session_state["top100_clicked_ticker"] = detail_ticker
-            detail_row = df.loc[df["Ticker"] == detail_ticker].iloc[0]
-
-            d1, d2, d3, d4 = st.columns(4)
-            d1.metric("Score", f"{detail_row.get('Score', 0):.0f}/100")
-            d2.metric("Kurs", f"{detail_row.get('Kurs', 0):.2f}")
-            pe_val = detail_row.get("P/E")
-            d3.metric("P/E", "N/A" if pd.isna(pe_val) else f"{pe_val:.1f}")
-            yield_val = detail_row.get("Direkteavkastning %")
-            d4.metric("Utbytte", "N/A" if pd.isna(yield_val) else f"{yield_val:.1f}%")
-
-            e1, e2, e3, e4 = st.columns(4)
-            roe_val = detail_row.get("ROE %")
-            vol_val = detail_row.get("Volatilitet %")
-            e1.metric("ROE", "N/A" if pd.isna(roe_val) else f"{roe_val:.1f}%")
-            e2.metric("Volatilitet", "N/A" if pd.isna(vol_val) else f"{vol_val:.1f}%")
-            e3.metric("30 dager", f"{detail_row.get('30 dager %', 0):.1f}%")
-            e4.metric("1 år", f"{detail_row.get('1 år %', 0):.1f}%")
-
-            st.info(
-                f"🕒 Siste tilgjengelige kurs: {detail_row.get('Siste kurstid full', 'Ukjent')} · "
-                f"Kursalder: {detail_row.get('Kursalder', 'Ukjent')} · "
-                f"Kilde: {detail_row.get('Kurskilde', 'Yahoo Finance / yfinance')}. "
-                "Yahoo-data kan være forsinket og er ikke garantert sanntid."
-            )
-
-            st.caption(
-                f"Vurdering: {detail_row.get('Vurdering', 'N/A')} · "
-                f"Teknisk {detail_row.get('Teknisk', 'N/A')} · "
-                f"Fundamental {detail_row.get('Fundamental', 'N/A')} · "
-                f"Kvalitet {detail_row.get('Kvalitet', 'N/A')} · "
-                f"Risiko {detail_row.get('Risiko', 'N/A')} · "
-                f"Utbytte-score {detail_row.get('Utbytte-score', 'N/A')}"
-            )
-
-            st.markdown("### 📈 Kursutvikling for valgt aksje")
-            period_detail = st.radio(
-                "Vis historisk kurs", ["1 år", "3 år", "5 år"],
-                horizontal=True, key="top100_chart_period",
-            )
-            period_lookup = {"1 år": "1y", "3 år": "3y", "5 år": "5y"}
-            detail_hist = get_history(detail_ticker, period_lookup[period_detail])
-            if detail_hist is not None and not detail_hist.empty and "Close" in detail_hist.columns:
-                price_chart = detail_hist[["Close"]].dropna().rename(columns={"Close": "Kurs"})
-                price_chart.index = pd.to_datetime(price_chart.index)
-                price_chart.index.name = "Dato"
-                st.line_chart(price_chart, use_container_width=True, x_label="Dato", y_label="Kurs")
-                first_price = float(price_chart["Kurs"].iloc[0])
-                last_price = float(price_chart["Kurs"].iloc[-1])
-                period_change = (last_price / first_price - 1) * 100 if first_price > 0 else None
-                st.caption(
-                    f"Endring i valgt periode: {period_change:+.1f} % · " if period_change is not None else ""
-                )
-                st.caption("Ujusterte historiske sluttkurser (uten utbytte). Kilde: Yahoo Finance. Kan være forsinket.")
+            st.caption("Risiko-score: Høyere tall betyr lavere beregnet risiko, ikke høyere risiko.")
+            full_cache = st.session_state.setdefault("top100_full_details", {})
+            if detail_ticker not in full_cache:
+                with st.spinner(f"Henter full enkeltanalyse for {detail_ticker}..."):
+                    try:
+                        full_cache[detail_ticker] = analyze_ticker(detail_ticker, full=True)
+                    except Exception as exc:
+                        st.warning(f"Kunne ikke hente full analyse: {exc}")
+            full_result = full_cache.get(detail_ticker)
+            if full_result is not None:
+                render_full_analysis(full_result, chart_key="top100_full_chart_period")
             else:
-                st.warning("Ingen historiske kursdata tilgjengelig for valgt periode.")
-
-            st.markdown("### 📋 Flere nøkkeltall")
-            extra_keys = [
-                ("P/E", "P/E"), ("ROE %", "ROE"), ("Dividend yield %", "Direkteavkastning %"),
-                ("Volatilitet %", "Volatilitet"), ("RSI14", "RSI 14"),
-                ("MA50", "Glidende snitt 50 dager"), ("MA200", "Glidende snitt 200 dager"),
-                ("Beta", "Beta"), ("Max drawdown %", "Største historiske fall"),
-            ]
-            extras = []
-            for source_key, label in extra_keys:
-                value = detail_row.get(source_key)
-                if value is not None and not pd.isna(value):
-                    extras.append({"Nøkkeltall": label, "Verdi": f"{value:.2f}" if isinstance(value, (int, float, np.number)) else str(value)})
-            if extras:
-                st.dataframe(pd.DataFrame(extras), hide_index=True, use_container_width=True)
-
-            if st.button("🔬 Åpne full enkeltanalyse for valgt aksje", key="top100_open_full"):
-                st.session_state.selected_ticker = detail_ticker
-                with st.spinner(f"Henter selskapsinformasjon for {detail_ticker}..."):
-                    st.session_state.single_analysis_result = analyze_ticker(detail_ticker, full=True)
-                st.success("Full analyse er klar under fanen «Enkeltanalyse». Klikk på den fanen øverst.")
+                st.info("Velg en annen aksje eller prøv igjen senere.")
 
             st.markdown("### Topp 10")
             top10 = df.head(10)[["Ticker", "Selskap", "Score", "Vurdering", "Kurs", "30 dager %", "90 dager %", "1 år %"]].copy()
@@ -1105,6 +1046,6 @@ st.caption(
     "Sammensetning og rangering kan endre seg. Scoren er mekanisk og kan ikke forutsi fremtidig avkastning."
 )
 st.markdown(
-    """<div style="text-align:center;margin-top:2.5rem;padding:1rem 0;font-size:0.8rem;opacity:0.65;border-top:1px solid rgba(128,128,128,0.25);">© GS, Skjetten 2026 · Smart Aksjeanalyse V7.8</div>""",
+    """<div style="text-align:center;margin-top:2.5rem;padding:1rem 0;font-size:0.8rem;opacity:0.65;border-top:1px solid rgba(128,128,128,0.25);">© GS, Skjetten 2026 · Smart Aksjeanalyse V7.9</div>""",
     unsafe_allow_html=True,
 )
