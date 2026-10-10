@@ -741,7 +741,7 @@ with st.expander("ℹ️ Slik beregnes scoren"):
 **Viktig:** Samme modell brukes på tvers av markedene. Banker, teknologi, energi, shipping og andre sektorer kan ha svært forskjellige normale nøkkeltall, så scoren bør brukes sammen med detaljanalysen.
 """)
 
-def render_full_analysis(r, chart_key=chart_key):
+def render_full_analysis(r, chart_key="single_analysis_chart_period"):
     st.subheader(f"{r['Selskap']} ({r['Ticker']})")
     a, b = st.columns(2)
     a.metric("Kurs", f"{r['Kurs']:.2f} {r['Valuta']}")
@@ -1046,6 +1046,6 @@ st.caption(
     "Sammensetning og rangering kan endre seg. Scoren er mekanisk og kan ikke forutsi fremtidig avkastning."
 )
 st.markdown(
-    """<div style="text-align:center;margin-top:2.5rem;padding:1rem 0;font-size:0.8rem;opacity:0.65;border-top:1px solid rgba(128,128,128,0.25);">© GS, Skjetten 2026 · Smart Aksjeanalyse V7.9</div>""",
+    """<div style="text-align:center;margin-top:2.5rem;padding:1rem 0;font-size:0.8rem;opacity:0.65;border-top:1px solid rgba(128,128,128,0.25);">© GS, Skjetten 2026 · Smart Aksjeanalyse V7.10</div>""",
     unsafe_allow_html=True,
 )
