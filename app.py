@@ -928,6 +928,13 @@ with tab2:
             df = pd.DataFrame(results)
             df["Vurdering"] = df["Score"].apply(score_label)
             df["Direkteavkastning %"] = pd.to_numeric(df["Dividend yield %"], errors="coerce")
+            # Samme P/E 18-proxy som i full enkeltanalyse.
+            # Vis manglende verdi i stedet for å antyde en pålitelig verdsettelse.
+            pe_values = pd.to_numeric(df["P/E"], errors="coerce")
+            prices = pd.to_numeric(df["Kurs"], errors="coerce")
+            valid_valuation = pe_values.gt(0) & prices.gt(0) & np.isfinite(pe_values) & np.isfinite(prices)
+            df["Est. verdi"] = (prices * 18 / pe_values).where(valid_valuation)
+            df["Oppside %"] = ((df["Est. verdi"] / prices - 1) * 100).where(valid_valuation)
 
             company_search = st.text_input(
                 "🔎 Søk i Top 100",
@@ -953,11 +960,12 @@ with tab2:
             show_cols = [
                 "Vurdering", "Score", "Ticker", "Selskap", "Kurs", "Siste kurstid",
                 "30 dager %", "90 dager %", "1 år %",
-                "Teknisk", "Fundamental", "Kvalitet", "Risiko", "Direkteavkastning %"
+                "Teknisk", "Fundamental", "Kvalitet", "Risiko", "Direkteavkastning %",
+                "Est. verdi", "Oppside %"
             ]
             display = df[show_cols].copy()
             for col in ["Kurs", "30 dager %", "90 dager %", "1 år %", "Score", "Teknisk", "Fundamental",
-                        "Kvalitet", "Risiko", "Utbytte-score", "Volatilitet %", "Direkteavkastning %", "P/E", "ROE %"]:
+                        "Kvalitet", "Risiko", "Utbytte-score", "Volatilitet %", "Direkteavkastning %", "P/E", "ROE %", "Est. verdi", "Oppside %"]:
                 if col in display.columns:
                     display[col] = pd.to_numeric(display[col], errors="coerce").round(1)
 
@@ -967,8 +975,8 @@ with tab2:
             st.markdown("### Resultater")
             if company_search:
                 st.caption(f"Søket «{company_search}» ga {len(df)} treff i analyserte aksjer.")
-            st.caption("Hovedtabellen viser alle 14 kolonnene med kompakte overskrifter. Klikk på en rad i tabellen for å vise kursgraf og detaljer under.")
-            st.caption("Sist kurs viser dato og klokkeslett (dag.måned time:minutt). Full dato og delscorer vises under tabellen.")
+            st.caption("Hovedtabellen viser nøkkeltall, utbytte og en enkel P/E 18-verdiindikasjon. Klikk på en rad i tabellen for å vise kursgraf og detaljer under.")
+            st.caption("Sist kurs viser dato og klokkeslett (dag.måned time:minutt). Est. verdi = kurs × 18 / P/E. Oppside % er forskjellen mot kurs, ikke et kursmål. Manglende/negativ P/E vises som –.")
             table_event = st.dataframe(
                 display,
                 on_select="rerun",
@@ -992,6 +1000,8 @@ with tab2:
                     "Kvalitet": st.column_config.NumberColumn("Kval.", format="%.0f", width=58),
                     "Risiko": st.column_config.NumberColumn("Risiko-score", format="%.0f", width=90),
                     "Direkteavkastning %": st.column_config.NumberColumn("Utbytte %", format="%.1f%%", width=77),
+                    "Est. verdi": st.column_config.NumberColumn("Est. verdi", format="%.2f", width=90),
+                    "Oppside %": st.column_config.NumberColumn("Oppside %", format="%+.1f%%", width=90),
                 },
             )
 
@@ -1059,6 +1069,6 @@ st.caption(
     "Sammensetning og rangering kan endre seg. Scoren er mekanisk og kan ikke forutsi fremtidig avkastning."
 )
 st.markdown(
-    """<div style="text-align:center;margin-top:2.5rem;padding:1rem 0;font-size:0.8rem;opacity:0.65;border-top:1px solid rgba(128,128,128,0.25);">© GS, Skjetten 2026 · Smart Aksjeanalyse V7.12</div>""",
+    """<div style="text-align:center;margin-top:2.5rem;padding:1rem 0;font-size:0.8rem;opacity:0.65;border-top:1px solid rgba(128,128,128,0.25);">© GS, Skjetten 2026 · Smart Aksjeanalyse V7.13</div>""",
     unsafe_allow_html=True,
 )
