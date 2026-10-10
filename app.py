@@ -984,23 +984,23 @@ with tab2:
 
             st.markdown("### 🔎 Detaljer for valgt aksje")
             detail_options = df["Ticker"].tolist()
-            selected_rows = table_event.selection.rows if table_event is not None else []
+            selected_rows = list(table_event.selection.rows) if table_event is not None else []
+            # Table row selection is the source of truth. A persistent selectbox
+            # must not overwrite it with its previous value on rerun.
+            selected_ticker = None
             if selected_rows and 0 <= selected_rows[0] < len(detail_options):
-                st.session_state["top100_clicked_ticker"] = detail_options[selected_rows[0]]
-            clicked = st.session_state.get("top100_clicked_ticker")
-            if clicked not in detail_options:
-                clicked = detail_options[0] if detail_options else None
-            if clicked is None:
+                selected_ticker = detail_options[selected_rows[0]]
+            if selected_ticker is None:
+                selected_ticker = st.session_state.get("top100_clicked_ticker")
+            if selected_ticker not in detail_options:
+                selected_ticker = detail_options[0] if detail_options else None
+            if selected_ticker is None:
                 st.info("Ingen aksjer samsvarer med søket.")
                 st.stop()
-            detail_ticker = st.selectbox(
-                "Valgt aksje – klikk gjerne på en annen rad i tabellen",
-                detail_options,
-                index=detail_options.index(clicked),
-                format_func=lambda t: f"{t} — {TOP50_LABELS.get(t, t).split(' — ', 1)[-1]}",
-                key="top50_detail_ticker",
-            )
-            st.session_state["top100_clicked_ticker"] = detail_ticker
+            st.session_state["top100_clicked_ticker"] = selected_ticker
+            detail_ticker = selected_ticker
+            st.markdown(f"**Valgt aksje: {detail_ticker} — {TOP50_LABELS.get(detail_ticker, detail_ticker).split(' — ', 1)[-1]}**")
+            st.caption("Klikk på en annen rad i tabellen for å bytte aksje. Hele analysen oppdateres automatisk.")
             st.caption("Risiko-score: Høyere tall betyr lavere beregnet risiko, ikke høyere risiko.")
             full_cache = st.session_state.setdefault("top100_full_details", {})
             if detail_ticker not in full_cache:
@@ -1046,6 +1046,6 @@ st.caption(
     "Sammensetning og rangering kan endre seg. Scoren er mekanisk og kan ikke forutsi fremtidig avkastning."
 )
 st.markdown(
-    """<div style="text-align:center;margin-top:2.5rem;padding:1rem 0;font-size:0.8rem;opacity:0.65;border-top:1px solid rgba(128,128,128,0.25);">© GS, Skjetten 2026 · Smart Aksjeanalyse V7.10</div>""",
+    """<div style="text-align:center;margin-top:2.5rem;padding:1rem 0;font-size:0.8rem;opacity:0.65;border-top:1px solid rgba(128,128,128,0.25);">© GS, Skjetten 2026 · Smart Aksjeanalyse V7.11</div>""",
     unsafe_allow_html=True,
 )
