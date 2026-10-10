@@ -951,10 +951,13 @@ with tab2:
             st.markdown("### Resultater")
             if company_search:
                 st.caption(f"Søket «{company_search}» ga {len(df)} treff i analyserte aksjer.")
-            st.caption("Hovedtabellen viser alle 13 kolonnene med kompakte overskrifter. Velg en aksje under tabellen for flere detaljer.")
+            st.caption("Hovedtabellen viser alle 13 kolonnene med kompakte overskrifter. Klikk på en rad i tabellen for å vise kursgraf og detaljer under.")
             st.caption("Sist kurs viser dato og klokkeslett (dag.måned time:minutt). Full dato og delscorer vises under tabellen.")
-            st.dataframe(
+            table_event = st.dataframe(
                 display,
+                on_select="rerun",
+                selection_mode="single-row",
+                key="top100_clickable_table",
                 use_container_width=True,
                 height=720,
                 hide_index=True,
@@ -977,12 +980,23 @@ with tab2:
 
             st.markdown("### 🔎 Detaljer for valgt aksje")
             detail_options = df["Ticker"].tolist()
+            selected_rows = table_event.selection.rows if table_event is not None else []
+            if selected_rows and 0 <= selected_rows[0] < len(detail_options):
+                st.session_state["top100_clicked_ticker"] = detail_options[selected_rows[0]]
+            clicked = st.session_state.get("top100_clicked_ticker")
+            if clicked not in detail_options:
+                clicked = detail_options[0] if detail_options else None
+            if clicked is None:
+                st.info("Ingen aksjer samsvarer med søket.")
+                st.stop()
             detail_ticker = st.selectbox(
-                "Velg aksje",
+                "Valgt aksje – klikk gjerne på en annen rad i tabellen",
                 detail_options,
+                index=detail_options.index(clicked),
                 format_func=lambda t: f"{t} — {TOP50_LABELS.get(t, t).split(' — ', 1)[-1]}",
                 key="top50_detail_ticker",
             )
+            st.session_state["top100_clicked_ticker"] = detail_ticker
             detail_row = df.loc[df["Ticker"] == detail_ticker].iloc[0]
 
             d1, d2, d3, d4 = st.columns(4)
@@ -1017,6 +1031,49 @@ with tab2:
                 f"Utbytte-score {detail_row.get('Utbytte-score', 'N/A')}"
             )
 
+            st.markdown("### 📈 Kursutvikling for valgt aksje")
+            period_detail = st.radio(
+                "Vis historisk kurs", ["1 år", "3 år", "5 år"],
+                horizontal=True, key="top100_chart_period",
+            )
+            period_lookup = {"1 år": "1y", "3 år": "3y", "5 år": "5y"}
+            detail_hist = get_history(detail_ticker, period_lookup[period_detail])
+            if detail_hist is not None and not detail_hist.empty and "Close" in detail_hist.columns:
+                price_chart = detail_hist[["Close"]].dropna().rename(columns={"Close": "Kurs"})
+                price_chart.index = pd.to_datetime(price_chart.index)
+                price_chart.index.name = "Dato"
+                st.line_chart(price_chart, use_container_width=True, x_label="Dato", y_label="Kurs")
+                first_price = float(price_chart["Kurs"].iloc[0])
+                last_price = float(price_chart["Kurs"].iloc[-1])
+                period_change = (last_price / first_price - 1) * 100 if first_price > 0 else None
+                st.caption(
+                    f"Endring i valgt periode: {period_change:+.1f} % · " if period_change is not None else ""
+                )
+                st.caption("Ujusterte historiske sluttkurser (uten utbytte). Kilde: Yahoo Finance. Kan være forsinket.")
+            else:
+                st.warning("Ingen historiske kursdata tilgjengelig for valgt periode.")
+
+            st.markdown("### 📋 Flere nøkkeltall")
+            extra_keys = [
+                ("P/E", "P/E"), ("ROE %", "ROE"), ("Dividend yield %", "Direkteavkastning %"),
+                ("Volatilitet %", "Volatilitet"), ("RSI14", "RSI 14"),
+                ("MA50", "Glidende snitt 50 dager"), ("MA200", "Glidende snitt 200 dager"),
+                ("Beta", "Beta"), ("Max drawdown %", "Største historiske fall"),
+            ]
+            extras = []
+            for source_key, label in extra_keys:
+                value = detail_row.get(source_key)
+                if value is not None and not pd.isna(value):
+                    extras.append({"Nøkkeltall": label, "Verdi": f"{value:.2f}" if isinstance(value, (int, float, np.number)) else str(value)})
+            if extras:
+                st.dataframe(pd.DataFrame(extras), hide_index=True, use_container_width=True)
+
+            if st.button("🔬 Åpne full enkeltanalyse for valgt aksje", key="top100_open_full"):
+                st.session_state.selected_ticker = detail_ticker
+                with st.spinner(f"Henter selskapsinformasjon for {detail_ticker}..."):
+                    st.session_state.single_analysis_result = analyze_ticker(detail_ticker, full=True)
+                st.success("Full analyse er klar under fanen «Enkeltanalyse». Klikk på den fanen øverst.")
+
             st.markdown("### Topp 10")
             top10 = df.head(10)[["Ticker", "Selskap", "Score", "Vurdering", "Kurs", "30 dager %", "90 dager %", "1 år %"]].copy()
             st.dataframe(
@@ -1048,6 +1105,6 @@ st.caption(
     "Sammensetning og rangering kan endre seg. Scoren er mekanisk og kan ikke forutsi fremtidig avkastning."
 )
 st.markdown(
-    """<div style="text-align:center;margin-top:2.5rem;padding:1rem 0;font-size:0.8rem;opacity:0.65;border-top:1px solid rgba(128,128,128,0.25);">© GS, Skjetten 2026 · Smart Aksjeanalyse V7.7</div>""",
+    """<div style="text-align:center;margin-top:2.5rem;padding:1rem 0;font-size:0.8rem;opacity:0.65;border-top:1px solid rgba(128,128,128,0.25);">© GS, Skjetten 2026 · Smart Aksjeanalyse V7.8</div>""",
     unsafe_allow_html=True,
 )
