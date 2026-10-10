@@ -67,7 +67,7 @@ st.markdown(
     #MainMenu {visibility:hidden !important;}
     footer {visibility:hidden !important;}
     header {visibility:hidden !important;}
-    .block-container {padding-top:0.5rem !important; padding-bottom:2rem !important; max-width:1180px;}
+    .block-container {padding-top:0.5rem !important; padding-bottom:2rem !important; max-width:96vw !important;}
     .stButton > button {min-height:3rem; border-radius:0.8rem; font-weight:600;}
     .stTextInput input, .stTextArea textarea {font-size:16px !important; border-radius:0.75rem !important;}
     @media (max-width:700px) {
@@ -936,7 +936,8 @@ with tab2:
 
             show_cols = [
                 "Vurdering", "Score", "Ticker", "Selskap", "Kurs", "Siste kurstid",
-                "30 dager %", "90 dager %", "1 år %"
+                "30 dager %", "90 dager %", "1 år %",
+                "Teknisk", "Fundamental", "Kvalitet", "Risiko"
             ]
             display = df[show_cols].copy()
             for col in ["Kurs", "30 dager %", "90 dager %", "1 år %", "Score", "Teknisk", "Fundamental",
@@ -950,7 +951,7 @@ with tab2:
             st.markdown("### Resultater")
             if company_search:
                 st.caption(f"Søket «{company_search}» ga {len(df)} treff i analyserte aksjer.")
-            st.caption("Hovedtabellen viser bare de viktigste nøkkeltallene slik at den skal få plass på PC. Velg en aksje under tabellen for flere detaljer.")
+            st.caption("Hovedtabellen viser alle 13 kolonnene med kompakte overskrifter. Velg en aksje under tabellen for flere detaljer.")
             st.caption("Sist kurs viser dato og klokkeslett (dag.måned time:minutt). Full dato og delscorer vises under tabellen.")
             st.dataframe(
                 display,
@@ -958,15 +959,19 @@ with tab2:
                 height=720,
                 hide_index=True,
                 column_config={
-                    "Vurdering": st.column_config.TextColumn("Vurdering", width=100),
-                    "Score": st.column_config.NumberColumn("Score", format="%.0f", width=64),
-                    "Ticker": st.column_config.TextColumn("Ticker", width=92),
-                    "Selskap": st.column_config.TextColumn("Selskap", width=165),
-                    "Kurs": st.column_config.NumberColumn("Kurs", format="%.2f", width=76),
-                    "Siste kurstid": st.column_config.TextColumn("Sist kurs", width=115),
-                    "30 dager %": st.column_config.NumberColumn("30d %", format="%.1f%%", width=76),
-                    "90 dager %": st.column_config.NumberColumn("90d %", format="%.1f%%", width=76),
-                    "1 år %": st.column_config.NumberColumn("1 år %", format="%.1f%%", width=76),
+                    "Vurdering": st.column_config.TextColumn("Vurd.", width=66),
+                    "Score": st.column_config.NumberColumn("Score", format="%.0f", width=54),
+                    "Ticker": st.column_config.TextColumn("Ticker", width=88),
+                    "Selskap": st.column_config.TextColumn("Selskap", width=210),
+                    "Kurs": st.column_config.NumberColumn("Kurs", format="%.2f", width=72),
+                    "Siste kurstid": st.column_config.TextColumn("Sist kurs", width=100),
+                    "30 dager %": st.column_config.NumberColumn("30d %", format="%.1f%%", width=62),
+                    "90 dager %": st.column_config.NumberColumn("90d %", format="%.1f%%", width=62),
+                    "1 år %": st.column_config.NumberColumn("1år %", format="%.1f%%", width=62),
+                    "Teknisk": st.column_config.NumberColumn("Tekn.", format="%.0f", width=58),
+                    "Fundamental": st.column_config.NumberColumn("Fund.", format="%.0f", width=58),
+                    "Kvalitet": st.column_config.NumberColumn("Kval.", format="%.0f", width=58),
+                    "Risiko": st.column_config.NumberColumn("Ris.", format="%.0f", width=58),
                 },
             )
 
@@ -1043,6 +1048,6 @@ st.caption(
     "Sammensetning og rangering kan endre seg. Scoren er mekanisk og kan ikke forutsi fremtidig avkastning."
 )
 st.markdown(
-    """<div style="text-align:center;margin-top:2.5rem;padding:1rem 0;font-size:0.8rem;opacity:0.65;border-top:1px solid rgba(128,128,128,0.25);">© GS, Skjetten 2026 · Smart Aksjeanalyse V7.6</div>""",
+    """<div style="text-align:center;margin-top:2.5rem;padding:1rem 0;font-size:0.8rem;opacity:0.65;border-top:1px solid rgba(128,128,128,0.25);">© GS, Skjetten 2026 · Smart Aksjeanalyse V7.7</div>""",
     unsafe_allow_html=True,
 )
